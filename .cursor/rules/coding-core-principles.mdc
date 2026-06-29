@@ -1,0 +1,39 @@
+---
+description: Universal coding principles — scope, quality, and conventions
+alwaysApply: true
+---
+
+# Core Coding Principles
+
+## Scope & simplicity
+
+- Solve the actual problem with the **smallest correct change**. No drive-by refactors or unrelated edits.
+- Prefer simple, readable code over clever abstractions. Do not over-engineer for hypothetical futures.
+- Reuse existing functions, patterns, and libraries before adding new ones.
+- One function/component = one clear responsibility. Extract only when reuse or clarity clearly improves.
+
+## Correctness first
+
+- Understand existing code and conventions before writing. Match naming, structure, and style of the surrounding codebase.
+- Handle errors explicitly — never swallow exceptions silently. Log or propagate with context.
+- Validate inputs at system boundaries (APIs, forms, CLI args). Fail fast with clear messages.
+- Use types, schemas, or contracts where the language supports them.
+
+## Code hygiene
+
+- Delete dead code; do not leave commented-out blocks or orphan TODOs without a tracked issue.
+- Comments explain **why**, not what obvious code already shows.
+- Keep functions short; avoid deep nesting — early returns and guard clauses preferred.
+- Consistent formatting; follow project linter/formatter config when present.
+
+## Dependencies
+
+- Add new dependencies only when justified — prefer stdlib or what the project already uses.
+- Pin versions; avoid deprecated or unmaintained packages.
+- Do not copy-paste large blocks from the web without understanding and adapting them.
+
+## Git & delivery
+
+- Do not commit secrets, credentials, or `.env` files.
+- Do not create commits unless explicitly asked.
+- Changes should be reviewable: focused diffs, meaningful names, no debug logging left in.

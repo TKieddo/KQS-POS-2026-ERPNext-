@@ -1,0 +1,180 @@
+{
+ "actions": [],
+ "creation": "2026-06-28 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_layby",
+  "layby_enabled_on_pos",
+  "minimum_deposit_percent",
+  "maximum_term_days",
+  "grace_period_days",
+  "column_break_layby",
+  "early_cancel_full_refund_days",
+  "late_cancel_refund_percent",
+  "section_break_receipts",
+  "auto_print_layby_receipts",
+  "layby_customer_print_format",
+  "layby_reserve_print_format",
+  "layby_complete_print_format",
+  "section_break_notes",
+  "layby_policy_notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_layby",
+   "fieldtype": "Section Break",
+   "label": "Layby"
+  },
+  {
+   "default": "1",
+   "description": "Show the Layby button on Point of Sale.",
+   "fieldname": "layby_enabled_on_pos",
+   "fieldtype": "Check",
+   "label": "Enable Layby on POS"
+  },
+  {
+   "default": "20",
+   "description": "Minimum deposit required when opening a layby at the till.",
+   "fieldname": "minimum_deposit_percent",
+   "fieldtype": "Percent",
+   "label": "Minimum Deposit %",
+   "reqd": 1
+  },
+  {
+   "default": "90",
+   "description": "Days from opening date until the layby must be completed.",
+   "fieldname": "maximum_term_days",
+   "fieldtype": "Int",
+   "label": "Maximum Term (Days)",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "default": "7",
+   "description": "Extra days after due date before a layby is flagged overdue.",
+   "fieldname": "grace_period_days",
+   "fieldtype": "Int",
+   "label": "Grace Period (Days)",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_layby",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "7",
+   "description": "Customer cancel within this many days of opening receives a full deposit refund.",
+   "fieldname": "early_cancel_full_refund_days",
+   "fieldtype": "Int",
+   "label": "Early Cancel Full Refund (Days)",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "default": "50",
+   "description": "Deposit refund percentage when the customer cancels after the early window.",
+   "fieldname": "late_cancel_refund_percent",
+   "fieldtype": "Percent",
+   "label": "Late Cancel Refund %",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_receipts",
+   "fieldtype": "Section Break",
+   "label": "Layby Receipts"
+  },
+  {
+   "default": "1",
+   "description": "Open the print dialog automatically after layby create, payment, or completion at the till.",
+   "fieldname": "auto_print_layby_receipts",
+   "fieldtype": "Check",
+   "label": "Auto-print Layby Receipts on POS"
+  },
+  {
+   "description": "Customer copy — deposit, paid amount, balance, items. Used when opening a layby and recording payments.",
+   "fieldname": "layby_customer_print_format",
+   "fieldtype": "Link",
+   "label": "Layby Customer Print Format",
+   "options": "Print Format"
+  },
+  {
+   "description": "Short store/reserve slip — printed once when a layby is opened.",
+   "fieldname": "layby_reserve_print_format",
+   "fieldtype": "Link",
+   "label": "Layby Reserve Print Format",
+   "options": "Print Format"
+  },
+  {
+   "description": "Final receipt when the layby is fully paid. DocType should be Sales Invoice.",
+   "fieldname": "layby_complete_print_format",
+   "fieldtype": "Link",
+   "label": "Layby Complete Print Format",
+   "options": "Print Format"
+  },
+  {
+   "fieldname": "section_break_notes",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "description": "Internal notes for store managers. See docs/layby-rules.md for full policy.",
+   "fieldname": "layby_policy_notes",
+   "fieldtype": "Small Text",
+   "label": "Policy Notes"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-06-28 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "KQS Layby",
+ "name": "KQS Retail Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "KQS Store Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales User"
+  },
+  {
+   "read": 1,
+   "role": "KQS Cashier"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

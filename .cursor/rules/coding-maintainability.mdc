@@ -1,0 +1,44 @@
+---
+description: Maintainability, testing, and scalable growth
+alwaysApply: true
+---
+
+# Maintainability & Growth
+
+## Architecture for change
+
+- Separate concerns: UI, business logic, data access, and infrastructure in clear layers.
+- Depend on abstractions/interfaces at module boundaries — not concrete implementations.
+- Configuration over hardcoding: env vars and config files for environment-specific values.
+- Feature flags or versioning for risky rollouts — avoid big-bang releases.
+
+## Naming & structure
+
+- Names reveal intent: `getActiveUsers`, not `getData`. Avoid abbreviations unless domain-standard.
+- Group by feature or domain, not only by file type, as the project grows.
+- Public API surface stays small; keep internals private/module-scoped.
+
+## Testing
+
+- Add tests when requested or when fixing regressions in critical paths.
+- Test behavior, not implementation details. Cover edge cases and error paths.
+- Tests must be deterministic — no flaky time/network dependencies without control.
+- Prefer integration tests at boundaries; unit tests for complex pure logic.
+
+## Documentation
+
+- Update README, API docs, or ADRs when behavior, setup, or architecture changes.
+- Document non-obvious invariants, failure modes, and operational runbooks.
+- Child tables and state machines: document allowed transitions.
+
+## Error handling & observability
+
+- Structured logging with correlation IDs in services. Log levels: error vs warn vs debug.
+- User-facing errors are safe and actionable; internal details stay in logs.
+- Health checks and metrics for production services.
+
+## Refactoring
+
+- Refactor in small steps with tests green between steps.
+- Leave code cleaner than you found it only within the scope of your change.
+- Deprecate before removing public APIs; give consumers a migration path.

@@ -1,0 +1,38 @@
+---
+description: Universal performance practices
+alwaysApply: true
+---
+
+# Performance (Universal)
+
+## Measure before optimizing
+
+- Fix correctness and clarity first. Optimize only bottlenecks backed by profiling, metrics, or known hot paths.
+- Do not sacrifice readability for micro-gains unless measured.
+
+## Database & I/O
+
+- Avoid N+1 queries — batch fetch, join, or use eager loading.
+- Paginate large lists; never load unbounded result sets into memory.
+- Index columns used in WHERE, JOIN, and ORDER BY. Avoid full table scans on large tables.
+- Use transactions for related writes; keep transactions short.
+- Cache expensive reads with explicit invalidation — not stale-forever caches.
+
+## Application
+
+- Do work asynchronously for slow/non-critical tasks (queues, background jobs).
+- Lazy-load heavy modules and route-level code splits in frontends.
+- Debounce/throttle high-frequency events (search, scroll, resize).
+- Prefer streaming for large files/responses over loading entirely into memory.
+
+## Frontend
+
+- Minimize re-renders: stable keys, memoization where profiling shows benefit.
+- Optimize images/assets (size, format, lazy load). Avoid layout thrashing.
+- Avoid blocking the main thread with heavy sync work — use workers when needed.
+
+## Resources
+
+- Close connections, file handles, and streams. Use pooling for DB/HTTP clients.
+- Set timeouts on external calls. Fail fast rather than hang indefinitely.
+- Bound retries with backoff; use circuit breakers for unreliable dependencies.

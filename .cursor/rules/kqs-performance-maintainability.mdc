@@ -1,0 +1,42 @@
+---
+description: Performance, testing, and growth practices for KQS POS
+alwaysApply: true
+---
+
+# KQS POS — Performance & Maintainability
+
+## Performance targets
+
+| Area | Rule |
+|------|------|
+| POS catalog API | Single warehouse query; batch item metadata; target < 2 s on store Wi-Fi |
+| Layby search | Indexed fields first; `limit` capped; order by `modified desc` |
+| Stock qty | Always use sellable qty (on-hand − reservations), not raw bin qty |
+| Frontend | Minimize re-renders; avoid fetching full catalog on every keystroke |
+| Docker dev | Do not optimize prematurely — fix measured N+1 and missing limits first |
+
+## Growth & versioning
+
+- **v1 scope**: layby + POS per `docs/layby-rules.md`. Flag v2 features (manager PIN, exchanges) — do not half-implement.
+- New stores: configuration (Warehouse, POS Profile), not code forks.
+- Website/catalog sync: reuse `api/stock.py` endpoints — one source for sellable qty.
+- App version in `hooks.py` / `pyproject.toml`; document breaking API changes in `docs/`.
+
+## Testing before merge
+
+- Manual smoke on Docker dev: login → catalog → layby deposit → installment → complete → invoice.
+- Tablet checklist in `docs/deployment.md`.
+- Seed data: `kqs_retail.setup.seed_kqs_demo.seed` for reproducible dev.
+
+## Code quality
+
+- Python: type hints on public functions; copyright header on new files.
+- No dead code, commented-out blocks, or TODO without issue reference.
+- Comments only for non-obvious business rules (e.g. grace period, refund %).
+- Prefer extending ERPNext DocTypes over custom parallel data models.
+
+## Deployment
+
+- Single till URL: `https://your-erp-site/app/point-of-sale` on store tablets.
+- Backups: `bench --site all backup --with-files` (see `docs/deployment.md`).
+- Staging before production for any layby or payment logic change.

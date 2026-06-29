@@ -1,0 +1,38 @@
+---
+description: KQS POS architecture, boundaries, and change discipline
+alwaysApply: true
+---
+
+# KQS POS — Core Architecture
+
+## Stack & boundaries
+
+| Path | Role | Do |
+|------|------|-----|
+| `kqs_retail/` | Frappe app — layby, stock APIs, POS JS extensions | Extend ERPNext here |
+| `docs/` | Business rules & setup | Source of truth for policy |
+| `docker/` | Local dev only | Not production config |
+
+**Till UI:** ERPNext **Point of Sale** at `/app/point-of-sale` — extended via `page_js` in `kqs_retail` (layby button, lookup/pay).
+
+**Never fork or patch ERPNext upstream.** Install via bench/Docker; all custom logic lives in `kqs_retail`.
+
+## Change discipline
+
+- Minimize scope — smallest correct diff; no drive-by refactors.
+- Match existing patterns: Frappe DocType controllers, `@frappe.whitelist()` APIs, Desk pages under `kqs_retail/page/`.
+- When business policy changes, update `docs/` first (e.g. `layby-rules.md`), then code.
+- Financial/stock flows must be idempotent and auditable — use ERPNext documents (Sales Invoice, Stock Entry), not ad-hoc tables.
+- Do not commit secrets (`.env`, API keys, passwords). Use ERPNext site config.
+
+## Module layout (kqs_retail)
+
+```
+kqs_layby/      — agreements, payments, sellable qty helpers
+api/            — whitelisted methods for POS / manager pages
+page/           — Add Product, Assign to Branch Desk pages
+setup/          — seed scripts, fixtures
+public/js/      — ERPNext POS extensions (point_of_sale.js)
+```
+
+New features: new subpackage, DocType, or page under the right module — not loose scripts at repo root.

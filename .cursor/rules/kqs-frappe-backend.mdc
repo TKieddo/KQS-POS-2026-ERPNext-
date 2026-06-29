@@ -1,0 +1,51 @@
+---
+description: Frappe/ERPNext Python patterns for kqs_retail
+globs: kqs_retail/**/*.py
+alwaysApply: false
+---
+
+# kqs_retail — Backend (Frappe)
+
+## DocTypes
+
+- Logic in Document class: `validate`, `before_submit`, `on_submit`, `on_cancel`.
+- Hooks in `hooks.py` point to thin entry functions; heavy logic stays on the class.
+- Child tables: validate in parent `_validate_items()`.
+- Use `_()` for user-facing strings. Use `frappe.throw()` for business rule violations.
+
+## Whitelisted APIs (`api/`)
+
+```python
+@frappe.whitelist(allow_guest=False)
+def my_api(warehouse: str, limit: int = 20):
+    if not warehouse:
+        frappe.throw(_("Warehouse is required"))
+    limit = min(int(limit), 100)  # cap pagination
+    ...
+```
+
+- Type-hint parameters. Cap `limit_page_length` on list endpoints.
+- Return plain dicts/lists — no ORM doc objects unless needed.
+- POS extensions call APIs via `frappe.call` from `public/js/point_of_sale.js` or Desk pages.
+
+## Performance
+
+- **Avoid N+1**: batch-fetch Items/Bins in one query; do not loop `get_value` per row when building catalogs.
+- Use `frappe.db.sql(..., (param,), as_dict=True)` with `%s` placeholders only.
+- Index-friendly filters: equality on `warehouse`, `docstatus`, `status` before `LIKE` search.
+- Scheduled jobs (`scheduler_events`): batch process; log failures; keep idempotent.
+- Stock qty: reuse `get_sellable_qty()` — on-hand minus active layby holds.
+
+## Stock & layby
+
+- Reservations tracked on Layby Agreement line items — see `layby/stock_reservation.py` (`get_sellable_qty`).
+- Release reservation before completing or cancelling; never leave orphaned holds.
+- Multi-store: one warehouse per layby — enforce in validate.
+
+## New DocType checklist
+
+1. `{doctype}.json` + `{doctype}.py` (+ `.js` if form UX needed)
+2. Permissions in JSON for correct roles
+3. Hook in `hooks.py` if lifecycle events needed
+4. API wrapper if POS needs it
+5. Update relevant `docs/` if business rules change

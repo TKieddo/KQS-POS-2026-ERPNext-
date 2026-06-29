@@ -1,0 +1,190 @@
+{
+ "app": "kqs_retail",
+ "charts": [],
+ "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>KQS Retail</b></span>\",\"col\":12}},{\"id\":\"sp1\",\"type\":\"spacer\",\"data\":{\"col\":12}}]",
+ "creation": "2026-06-27 10:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "retail",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "KQS Retail",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Till",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Point of Sale",
+   "link_count": 0,
+   "link_to": "point-of-sale",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Layby Agreement",
+   "link_count": 0,
+   "link_to": "Layby Agreement",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Settings",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "KQS Retail Settings",
+   "link_count": 0,
+   "link_to": "KQS Retail Settings",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Catalog",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Add Product",
+   "link_count": 0,
+   "link_to": "quick-add-product",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Assign to Branch",
+   "link_count": 0,
+   "link_to": "assign-to-branch",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Stock",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Stock Balance",
+   "link_count": 0,
+   "link_to": "Stock Balance",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-06-27 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "KQS Layby",
+ "name": "KQS Retail",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "restrict_to_domain": "",
+ "roles": [
+  {
+   "role": "Sales User"
+  },
+  {
+   "role": "Sales Manager"
+  },
+  {
+   "role": "Stock Manager"
+  },
+  {
+   "role": "KQS Store Manager"
+  },
+  {
+   "role": "System Manager"
+  }
+ ],
+ "sequence_id": 2.0,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "format": "",
+   "icon": "retail",
+   "label": "Point of Sale",
+   "link_to": "point-of-sale",
+   "type": "Page"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "format": "",
+   "icon": "list",
+   "label": "Layby Agreement",
+   "link_to": "Layby Agreement",
+   "type": "DocType"
+  },
+  {
+   "color": "Purple",
+   "doc_view": "Form",
+   "format": "",
+   "icon": "setting",
+   "label": "KQS Retail Settings",
+   "link_to": "KQS Retail Settings",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "format": "",
+   "icon": "add",
+   "label": "Add Product",
+   "link_to": "quick-add-product",
+   "type": "Page"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "",
+   "format": "",
+   "icon": "stock",
+   "label": "Assign to Branch",
+   "link_to": "assign-to-branch",
+   "type": "Page"
+  }
+ ],
+ "title": "KQS Retail",
+ "type": "Workspace"
+}

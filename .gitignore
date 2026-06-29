@@ -1,0 +1,41 @@
+# Python / Frappe
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.log
+.env
+.venv/
+venv/
+
+# Node / tooling
+.vite/
+*.local
+
+# IDE
+.idea/
+.vscode/
+.cursor/*
+!.cursor/rules/
+*.swp
+.DS_Store
+
+# Local ERPNext site backups (use scripts/backup-dev-site.ps1)
+backups/
+
+# Frappe bench (if linked locally)
+sites/
+logs/
+config/
+apps/frappe/
+apps/erpnext/
+
+# Secrets
+*.pem
+site_config.json
+common_site_config.json
+
+# OS
+Thumbs.db

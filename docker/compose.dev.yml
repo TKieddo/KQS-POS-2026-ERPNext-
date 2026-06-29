@@ -1,0 +1,231 @@
+# KQS POS — local ERPNext (frappe_docker pwd.yml + kqs_retail mount)
+
+services:
+  backend:
+    image: frappe/erpnext:v16.25.0
+    networks:
+      - frappe_network
+    deploy:
+      restart_policy:
+        condition: on-failure
+    entrypoint:
+      - bash
+      - -c
+    command:
+      - |
+        if [ -d apps/kqs_retail ]; then ./env/bin/pip install -q -e ./apps/kqs_retail; fi
+        exec /usr/local/bin/entrypoint.sh start.sh
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+      - ../kqs_retail:/home/frappe/frappe-bench/apps/kqs_retail:ro
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      MYSQL_ROOT_PASSWORD: admin
+      MARIADB_ROOT_PASSWORD: admin
+
+  configurator:
+    image: frappe/erpnext:v16.25.0
+    networks:
+      - frappe_network
+    deploy:
+      restart_policy:
+        condition: none
+    entrypoint:
+      - bash
+      - -c
+    command:
+      - >
+        ls -1 apps | grep -v '^kqs_retail$$' > sites/apps.txt;
+        if [ -d apps/kqs_retail ]; then ./env/bin/pip install -q -e ./apps/kqs_retail; fi;
+        echo kqs_retail >> sites/apps.txt;
+        bench set-config -g db_host $$DB_HOST;
+        bench set-config -gp db_port $$DB_PORT;
+        bench set-config -g redis_cache "redis://$$REDIS_CACHE";
+        bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
+        bench set-config -g redis_socketio "redis://$$REDIS_QUEUE";
+        bench set-config -gp socketio_port $$SOCKETIO_PORT;
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis-cache:6379
+      REDIS_QUEUE: redis-queue:6379
+      SOCKETIO_PORT: "9000"
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+      - ../kqs_retail:/home/frappe/frappe-bench/apps/kqs_retail:ro
+
+  create-site:
+    image: frappe/erpnext:v16.25.0
+    networks:
+      - frappe_network
+    deploy:
+      restart_policy:
+        condition: none
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+      - ../kqs_retail:/home/frappe/frappe-bench/apps/kqs_retail:ro
+      - ../scripts/docker-init-site.sh:/docker-init-site.sh:ro
+    entrypoint:
+      - bash
+      - /docker-init-site.sh
+
+  db:
+    image: mariadb:11.8
+    networks:
+      - frappe_network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 5s
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      restart_policy:
+        condition: on-failure
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MARIADB_ROOT_PASSWORD: admin
+    volumes:
+      - db-data:/var/lib/mysql
+
+  frontend:
+    image: frappe/erpnext:v16.25.0
+    networks:
+      - frappe_network
+    depends_on:
+      - websocket
+    deploy:
+      restart_policy:
+        condition: on-failure
+    command:
+      - nginx-entrypoint.sh
+    environment:
+      BACKEND: backend:8000
+      FRAPPE_SITE_NAME_HEADER: frontend
+      SOCKETIO: websocket:9000
+      UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
+      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
+      UPSTREAM_REAL_IP_RECURSIVE: "off"
+      PROXY_READ_TIMEOUT: 120
+      CLIENT_MAX_BODY_SIZE: 50m
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    ports:
+      - "8080:8080"
+
+  queue-long:
+    image: frappe/erpnext:v16.25.0
+    networks:
+      - frappe_network
+    deploy:
+      restart_policy:
+        condition: on-failure
+    entrypoint:
+      - bash
+      - -c
+    command:
+      - |
+        if [ -d apps/kqs_retail ]; then ./env/bin/pip install -q -e ./apps/kqs_retail; fi
+        exec bench worker --queue long,default,short
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+      - ../kqs_retail:/home/frappe/frappe-bench/apps/kqs_retail:ro
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+
+  queue-short:
+    image: frappe/erpnext:v16.25.0
+    networks:
+      - frappe_network
+    deploy:
+      restart_policy:
+        condition: on-failure
+    entrypoint:
+      - bash
+      - -c
+    command:
+      - |
+        if [ -d apps/kqs_retail ]; then ./env/bin/pip install -q -e ./apps/kqs_retail; fi
+        exec bench worker --queue short,default
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+      - ../kqs_retail:/home/frappe/frappe-bench/apps/kqs_retail:ro
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+
+  redis-queue:
+    image: redis:6.2-alpine
+    networks:
+      - frappe_network
+    deploy:
+      restart_policy:
+        condition: on-failure
+    volumes:
+      - redis-queue-data:/data
+
+  redis-cache:
+    image: redis:6.2-alpine
+    networks:
+      - frappe_network
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  scheduler:
+    image: frappe/erpnext:v16.25.0
+    networks:
+      - frappe_network
+    deploy:
+      restart_policy:
+        condition: on-failure
+    entrypoint:
+      - bash
+      - -c
+    command:
+      - |
+        if [ -d apps/kqs_retail ]; then ./env/bin/pip install -q -e ./apps/kqs_retail; fi
+        exec bench schedule
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+      - ../kqs_retail:/home/frappe/frappe-bench/apps/kqs_retail:ro
+
+  websocket:
+    image: frappe/erpnext:v16.25.0
+    networks:
+      - frappe_network
+    deploy:
+      restart_policy:
+        condition: on-failure
+    command:
+      - node
+      - /home/frappe/frappe-bench/apps/frappe/socketio.js
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+
+volumes:
+  db-data:
+  redis-queue-data:
+  sites:
+  logs:
+
+networks:
+  frappe_network:
+    driver: bridge
