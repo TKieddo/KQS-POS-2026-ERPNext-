@@ -65,7 +65,7 @@ Draft → Active → Completed
 - **New layby**: cashier selects items → customer → deposit payment → print agreement
 - **Installment**: lookup by phone / agreement ID / customer name → record payment
 - **Complete**: auto when balance = 0, or cashier taps **Complete**
-- **Exchange on layby item**: cancel line + add new line (manager PIN in v2)
+- **Exchange on layby item**: **not allowed** except **size exchange** (same style, different size) with manager approval — see [exchange-rules.md](exchange-rules.md)
 
 ## Reporting
 
