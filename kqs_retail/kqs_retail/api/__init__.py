@@ -9,6 +9,10 @@ from kqs_retail.kqs_layby.stock_reservation import get_sellable_qty
 
 
 def has_app_permission():
+	from kqs_retail.utils.cashier_security import is_kqs_cashier_only
+
+	if is_kqs_cashier_only():
+		return False
 	return frappe.has_permission("Layby Agreement", "read")
 
 
@@ -27,10 +31,17 @@ def get_sellable_stock(item_code: str, warehouse: str) -> dict:
 
 
 @frappe.whitelist()
-def search_layby_agreements(query: str = "", warehouse: str = "", limit: int = 20):
+def search_layby_agreements(
+	query: str = "",
+	warehouse: str = "",
+	customer: str = "",
+	limit: int = 20,
+):
 	filters = {"docstatus": 1, "status": "Active"}
 	if warehouse:
 		filters["warehouse"] = warehouse
+	if customer:
+		filters["customer"] = customer
 
 	or_filters = []
 	if query:

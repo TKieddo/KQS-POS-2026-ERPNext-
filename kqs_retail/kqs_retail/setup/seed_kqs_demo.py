@@ -11,30 +11,13 @@ from frappe.utils import flt, today
 from frappe.utils.password import update_password
 
 
+from kqs_retail.setup.cashier_permissions import CASHIER_BLOCKED_MODULES
+
 COMPANY = None
 WAREHOUSES = ["Central - KQS", "Store-01 - KQS", "Store-02 - KQS"]
 DEMO_PASSWORD = "kqs123"
 
-BLOCKED_MODULES_CASHIER = [
-	"Accounts",
-	"Assets",
-	"Automation",
-	"Bulk Transaction",
-	"Buying",
-	"CRM",
-	"ERPNext Integrations",
-	"ERPNext Settings",
-	"HR",
-	"Integrations",
-	"Maintenance",
-	"Manufacturing",
-	"Projects",
-	"Quality Management",
-	"Regional",
-	"Setup",
-	"Support",
-	"Website",
-]
+BLOCKED_MODULES_CASHIER = CASHIER_BLOCKED_MODULES
 
 
 def sync_pos_payment_methods():
@@ -62,6 +45,11 @@ def seed():
 	_ensure_desk_pages()
 	_ensure_stock_sidebar()
 	_ensure_catalog_permissions()
+	from kqs_retail.setup.cashier_permissions import ensure as ensure_cashier_permissions
+	from kqs_retail.setup.manager_permissions import ensure as ensure_manager_permissions
+
+	ensure_cashier_permissions()
+	ensure_manager_permissions()
 	cleanup_demo_stores()
 	frappe.db.commit()
 	print("KQS demo seed complete.")
@@ -76,11 +64,11 @@ def seed():
 
 def cleanup_demo_stores():
 	"""Disable ERPNext demo warehouses/POS profiles — keep only KQS stores for testing."""
-	from kqs_retail.utils.warehouses import KQS_POS_PROFILES, get_kqs_warehouse_names
+	from kqs_retail.utils.warehouses import get_kqs_pos_profile_names, get_kqs_warehouse_names
 
 	company = _resolve_company()
 	keep_wh = set(get_kqs_warehouse_names(company))
-	keep_pos = set(KQS_POS_PROFILES)
+	keep_pos = set(get_kqs_pos_profile_names(company))
 
 	disabled_wh = 0
 	for row in frappe.get_all("Warehouse", fields=["name", "company"]):
@@ -170,11 +158,10 @@ def _ensure_users():
 	_ensure_demo_user(
 		"cashier@kqs.local",
 		"KQS Cashier",
-		roles=["Sales User", "KQS Cashier"],
+		roles=["KQS Cashier"],
 		home_page="point-of-sale",
 		block_modules=BLOCKED_MODULES_CASHIER,
 		permissions=[
-			("Warehouse", "Store-01 - KQS"),
 			("POS Profile", "Store-01 POS"),
 		],
 	)
@@ -221,6 +208,7 @@ def _ensure_demo_user(email, full_name, roles, home_page, block_modules, permiss
 			{"user": email, "allow": allow, "for_value": for_value},
 		)
 		if existing:
+			frappe.db.set_value("User Permission", existing, "apply_to_all_doctypes", 0)
 			continue
 		frappe.get_doc(
 			{
@@ -228,14 +216,14 @@ def _ensure_demo_user(email, full_name, roles, home_page, block_modules, permiss
 				"user": email,
 				"allow": allow,
 				"for_value": for_value,
-				"apply_to_all_doctypes": 1,
+				"apply_to_all_doctypes": 0,
 			}
 		).insert(ignore_permissions=True)
 
 
 def _ensure_desk_pages():
 	"""Import KQS Desk pages if migrate did not register them yet."""
-	for page_name in ("quick-add-product", "assign-to-branch"):
+	for page_name in ("quick-add-product", "assign-to-branch", "kqs-returns", "kqs-customer-account"):
 		if frappe.db.exists("Page", page_name):
 			continue
 		frappe.reload_doc("KQS Layby", "Page", page_name)
@@ -488,9 +476,11 @@ def _ensure_payment_modes(company):
 	"""Cash + Card (and any future modes) for POS — linked to company GL accounts."""
 	cash_account = frappe.db.get_value("Company", company, "default_cash_account")
 	bank_account = _ensure_bank_account(company)
+	receivable = frappe.db.get_value("Company", company, "default_receivable_account")
 	specs = [
 		("Cash", "Cash", cash_account),
 		("Card", "Bank", bank_account),
+		("Store Credit", "General", receivable),
 	]
 	for mop_name, mop_type, account in specs:
 		if not account:

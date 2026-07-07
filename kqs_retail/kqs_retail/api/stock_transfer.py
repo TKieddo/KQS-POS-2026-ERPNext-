@@ -26,13 +26,14 @@ def kqs_warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 	"""Warehouse link query — KQS Central + store branches only."""
 	company = get_default_company()
 	names = get_kqs_warehouse_names(company)
-	if not names:
+	if not names or not company:
 		return []
 	return frappe.db.sql(
 		"""
 		SELECT name, warehouse_name
 		FROM `tabWarehouse`
-		WHERE name IN %(names)s
+		WHERE company = %(company)s
+		  AND name IN %(names)s
 		  AND IFNULL(disabled, 0) = 0
 		  AND is_group = 0
 		  AND (name LIKE %(txt)s OR warehouse_name LIKE %(txt)s)
@@ -40,6 +41,7 @@ def kqs_warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 		LIMIT %(start)s, %(page_len)s
 		""",
 		{
+			"company": company,
 			"names": names,
 			"txt": f"%{txt}%",
 			"start": start,

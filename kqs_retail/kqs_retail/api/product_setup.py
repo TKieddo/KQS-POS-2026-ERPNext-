@@ -7,11 +7,26 @@ from frappe import _
 from frappe.utils import cint, flt, today
 
 from kqs_retail.utils.defaults import get_default_company, get_default_stock_uom
-from kqs_retail.utils.warehouses import (
-	get_kqs_central_warehouse,
-	get_kqs_warehouse_names,
-	is_kqs_store_warehouse,
-)
+
+try:
+	from kqs_retail.utils.warehouses import (
+		get_kqs_central_warehouse,
+		get_kqs_branch_warehouse_names,
+		is_kqs_store_warehouse,
+	)
+except ImportError:
+	# Older deployed warehouses.py (pre dynamic branch discovery).
+	from kqs_retail.utils.warehouses import (
+		get_kqs_central_warehouse,
+		get_kqs_warehouse_names,
+		is_kqs_store_warehouse,
+	)
+
+	def get_kqs_branch_warehouse_names(company: str = "") -> list[str]:
+		names = get_kqs_warehouse_names(company)
+		central = get_kqs_central_warehouse(company)
+		branches = [name for name in names if name != central]
+		return branches
 
 
 @frappe.whitelist()
@@ -385,12 +400,12 @@ def _category_display_name(stored_name: str, department: str) -> str:
 @frappe.whitelist()
 def list_branches(company: str = ""):
 	company = company or get_default_company()
-	names = get_kqs_warehouse_names(company)
+	names = get_kqs_branch_warehouse_names(company)
 	if not names:
 		return []
 	return frappe.get_all(
 		"Warehouse",
-		filters={"name": ["in", names], "is_group": 0, "disabled": 0},
+		filters={"name": ["in", names], "disabled": 0},
 		fields=["name", "warehouse_name"],
 		order_by="name",
 	)

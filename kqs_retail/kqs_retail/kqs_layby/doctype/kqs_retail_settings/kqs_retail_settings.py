@@ -18,3 +18,9 @@ class KQSRetailSettings(Document):
 			frappe.throw(_("Early Cancel Full Refund (Days) cannot be negative."))
 		if flt(self.late_cancel_refund_percent) < 0 or flt(self.late_cancel_refund_percent) > 100:
 			frappe.throw(_("Late Cancel Refund % must be between 0 and 100."))
+		if int(self.return_window_days or 0) <= 0:
+			frappe.throw(_("Return Acceptance (Days) must be greater than zero."))
+		if int(self.receipt_search_window_days or 0) <= 0:
+			frappe.throw(_("Receipt Search Window (Days) must be greater than zero."))
+		if int(self.receipt_search_window_days or 0) < int(self.return_window_days or 0):
+			frappe.throw(_("Receipt Search Window must be at least Return Acceptance (Days)."))

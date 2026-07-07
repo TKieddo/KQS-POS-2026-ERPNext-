@@ -26,6 +26,12 @@
   "column_break_2",
   "stock_reservation",
   "sales_invoice",
+  "section_break_closure",
+  "cancel_reason",
+  "refund_amount",
+  "forfeit_amount",
+  "refund_payment_entry",
+  "closed_on",
   "section_break_notes",
   "notes"
  ],
@@ -167,6 +173,44 @@
    "fieldtype": "Link",
    "label": "Sales Invoice",
    "options": "Sales Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_closure",
+   "fieldtype": "Section Break",
+   "label": "Cancel / Forfeit",
+   "depends_on": "eval:doc.cancel_reason"
+  },
+  {
+   "fieldname": "cancel_reason",
+   "fieldtype": "Select",
+   "label": "Close Reason",
+   "options": "\ncustomer\nstore_error\nforfeited",
+   "read_only": 1
+  },
+  {
+   "fieldname": "refund_amount",
+   "fieldtype": "Currency",
+   "label": "Refund Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "forfeit_amount",
+   "fieldtype": "Currency",
+   "label": "Forfeit / Retained",
+   "read_only": 1
+  },
+  {
+   "fieldname": "refund_payment_entry",
+   "fieldtype": "Link",
+   "label": "Refund Payment Entry",
+   "options": "Payment Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "closed_on",
+   "fieldtype": "Date",
+   "label": "Closed On",
    "read_only": 1
   },
   {

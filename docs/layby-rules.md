@@ -52,6 +52,37 @@ Draft → Active → Completed
 | Forfeited (no payment after grace) | **Forfeited (no refund)** | Released for resale |
 | Store cancel (error) | **Full refund** | Released |
 
+### Till steps — cancel (active layby)
+
+1. **Point of Sale** → menu **⋯ → Layby Lookup & Pay** (full-screen hub — not a small popup)
+2. Search and select the agreement in the left list
+3. Tap **Cancel layby** — opens a dedicated screen (not stacked buttons on a popup)
+4. Review paid amount, refund %, refund amount, and retained (forfeit) amount
+5. Choose **Customer cancel** or **Store error (100%)** — store error is manager-only
+6. Select refund method: **Customer account** (default — store credit) or **Cash / M-Pesa / Eco-Cash** (till payout when required)
+7. Tap **Confirm cancel & refund** — stock hold released
+
+Use **cancel** when the customer wants money back and is leaving. Do **not** cancel-and-reopen to swap items — use **Change item** instead.
+
+### Till steps — amend item (active layby)
+
+| Change type | Who | Steps |
+|-------------|-----|-------|
+| Size / colour (same style) | Cashier | Hub → select agreement → **Change item** → pick line → search variant |
+| Full product swap | Manager | Same, tick **Full product swap** → any in-stock SKU |
+
+Stock hold moves automatically: old SKU released, new SKU reserved. No Stock Entry until layby completes.
+
+If the new item costs less and the customer already overpaid: **Keep on layby** (credit toward balance) or **Refund cash** (manager/cashier choice).
+
+### Manager steps — forfeit (overdue)
+
+1. **KQS Retail** workspace → **Layby Overdue** report (or POS Layby hub → **Forfeit layby**)
+2. Enter required note — customer receives **0%** refund
+3. Status → **Forfeited**, stock released for resale
+
+Completed laybys (customer collected goods) use **Returns & Store Credit** — not these flows.
+
 ## Completion
 
 1. Final payment recorded on **Layby Payment**
@@ -64,16 +95,20 @@ Draft → Active → Completed
 
 - **New layby**: cashier selects items → customer → deposit payment → print agreement
 - **Installment**: lookup by phone / agreement ID / customer name → record payment
-- **Complete**: auto when balance = 0, or cashier taps **Complete**
-- **Exchange on layby item**: **not allowed** except **size exchange** (same style, different size) with manager approval — see [exchange-rules.md](exchange-rules.md)
+- **Complete**: auto when balance = 0
+- **Cancel**: Layby Lookup hub → select agreement → **Cancel layby** (dedicated screen)
+- **Change item**: Layby Lookup hub → **Change item** (dedicated screen per step)
+- **Forfeit**: manager only — Layby Lookup hub → **Forfeit layby**, or Layby Overdue report
+- **Completed layby returns**: **Returns & Store Credit** — see [exchange-rules.md](exchange-rules.md)
 
 ## Reporting
 
-- Open laybys by store
-- Deposits held (liability)
-- Forfeited laybys
-- Aging (overdue installments)
+- **Layby Open Summary** — active agreements by store
+- **Layby Deposits Held** — liability (`paid_amount` on Active)
+- **Layby Overdue** — past due + grace, for forfeit review
+- **Layby Forfeited Cancelled** — closed agreements with refund/forfeit amounts
 
 ## Version
 
 - **v1.0** — 2026-06-26 — initial rules for `kqs_retail` implementation
+- **v1.1** — 2026-07-06 — Phase B: till cancel/amend/forfeit + layby reports

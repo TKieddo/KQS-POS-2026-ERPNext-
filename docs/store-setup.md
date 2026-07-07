@@ -21,7 +21,7 @@ Map each physical store to an ERPNext **Warehouse** and **POS Profile**.
 
 Create in ERPNext: **Stock → Warehouse → New**
 
-Branches are ERPNext warehouses — KQS UI labels them **Branch** on Assign to Branch.
+Branches are ERPNext warehouses — KQS UI discovers them automatically from **Stock → Warehouse** (children of **Central**, or any warehouse linked to a **POS Profile**).
 
 ## POS Profiles
 
@@ -170,10 +170,12 @@ scripts\run-smoke-test.bat
 
 | Role | Login | Password | Access |
 |------|-------|----------|--------|
-| Cashier | `cashier@kqs.local` | `kqs123` | POS only — layby on checkout |
+| Cashier | `cashier@kqs.local` | `kqs123` | POS only — `/app/point-of-sale` (see [cashier-permissions.md](cashier-permissions.md)) |
 | Store manager | `manager@kqs.local` | `kqs123` | KQS Retail workspace, Add Product, Assign to Branch |
 | HQ admin | `Administrator` | (setup) | Full Desk — not for tills |
 
 **Use `cashier@kqs.local` on tablets, never Administrator.**
 
 Cashiers open **http://localhost:8080/app/point-of-sale** (bookmark on each register).
+
+**Cashier roles, User Permissions, and adding new till permissions:** [cashier-permissions.md](cashier-permissions.md)

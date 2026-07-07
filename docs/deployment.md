@@ -21,17 +21,45 @@ scripts\run-smoke-test.bat
 3. After deploy, install custom app on the bench container:
 
 ```bash
-bench get-app https://github.com/YOUR_ORG/kqs-pos --branch main --resolve-deps
+bench get-app https://github.com/TKieddo/KQS-POS-2026-ERPNext- --branch main --resolve-deps
 bench --site $SITE install-app kqs_retail
-bench --site $SITE execute kqs_retail.setup.seed_kqs_demo.seed
+bench --site $SITE migrate
+bench build --production
 ```
+
+**Do not** run `seed_kqs_demo.seed` on staging or production — that is dev-only demo data.
 
 ## Production (recommended)
 
 | Component | Host |
 |-----------|------|
-| ERPNext + MariaDB + Redis | VPS (Hetzner CPX31 ~$15/mo) |
+| ERPNext + MariaDB + Redis | VPS (Hostinger KVM 2, Hetzner CX23, etc.) |
 | Backups | `bench --site all backup --with-files` daily cron |
+
+### Clean production install (no demo data)
+
+After ERPNext site creation, install only the custom app. `migrate` runs KQS setup hooks (roles, custom fields, payment defaults) — **not** demo products or users.
+
+```bash
+bench get-app https://github.com/TKieddo/KQS-POS-2026-ERPNext- --branch main --resolve-deps
+bench --site YOUR_SITE install-app kqs_retail
+bench --site YOUR_SITE migrate
+bench build --production
+```
+
+Then configure manually (see [store-setup.md](store-setup.md)):
+
+1. Company, warehouses, POS profiles
+2. Real cashier/manager users (not `cashier@kqs.local`)
+3. Modes of payment (Cash, Bank, Mpesa, Eco-Cash)
+4. `bench --site YOUR_SITE execute kqs_retail.setup.seed_kqs_demo.sync_pos_payment_methods` — syncs payment tiles only; safe on production
+
+**Never run on production:**
+
+```bash
+# DEV ONLY — creates demo users, sample shoes, test stock
+bench --site YOUR_SITE execute kqs_retail.setup.seed_kqs_demo.seed
+```
 
 ### VPS quick outline
 
@@ -42,7 +70,7 @@ bench --site $SITE execute kqs_retail.setup.seed_kqs_demo.seed
 
 ## Tablet testing checklist
 
-- [ ] Login as `cashier@kqs.local` from store Wi-Fi → lands on POS
+- [ ] Login as a real cashier user from store Wi-Fi → lands on POS
 - [ ] Normal sale + return via ERPNext POS
 - [ ] Create layby with deposit (Layby button on checkout)
 - [ ] Layby Lookup & Pay from POS menu

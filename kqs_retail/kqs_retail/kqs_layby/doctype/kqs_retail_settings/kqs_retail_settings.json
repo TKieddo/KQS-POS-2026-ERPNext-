@@ -12,11 +12,17 @@
   "column_break_layby",
   "early_cancel_full_refund_days",
   "late_cancel_refund_percent",
+  "section_break_returns",
+  "return_window_days",
+  "receipt_search_window_days",
   "section_break_receipts",
   "auto_print_layby_receipts",
   "layby_customer_print_format",
   "layby_reserve_print_format",
   "layby_complete_print_format",
+  "section_break_ar_receipts",
+  "auto_print_ar_payment_receipts",
+  "ar_payment_print_format",
   "section_break_notes",
   "layby_policy_notes"
  ],
@@ -81,6 +87,29 @@
    "reqd": 1
   },
   {
+   "fieldname": "section_break_returns",
+   "fieldtype": "Section Break",
+   "label": "Returns & Store Credit"
+  },
+  {
+   "default": "14",
+   "description": "Receipts older than this cannot be returned (store credit). Cashiers still see them in search until Receipt Search Window.",
+   "fieldname": "return_window_days",
+   "fieldtype": "Int",
+   "label": "Return Acceptance (Days)",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "default": "30",
+   "description": "How far back Returns & Store Credit lists paid receipts for this store. Must be at least Return Acceptance (Days).",
+   "fieldname": "receipt_search_window_days",
+   "fieldtype": "Int",
+   "label": "Receipt Search Window (Days)",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
    "fieldname": "section_break_receipts",
    "fieldtype": "Section Break",
    "label": "Layby Receipts"
@@ -111,6 +140,25 @@
    "fieldname": "layby_complete_print_format",
    "fieldtype": "Link",
    "label": "Layby Complete Print Format",
+   "options": "Print Format"
+  },
+  {
+   "fieldname": "section_break_ar_receipts",
+   "fieldtype": "Section Break",
+   "label": "Account Payment Receipts"
+  },
+  {
+   "default": "1",
+   "description": "Open the print dialog automatically after collecting an account payment at the till (Customer Account → Pay).",
+   "fieldname": "auto_print_ar_payment_receipts",
+   "fieldtype": "Check",
+   "label": "Auto-print Account Payment Receipts on POS"
+  },
+  {
+   "description": "Customer receipt when paying what the customer owes. DocType must be Payment Entry.",
+   "fieldname": "ar_payment_print_format",
+   "fieldtype": "Link",
+   "label": "Account Payment Print Format",
    "options": "Print Format"
   },
   {

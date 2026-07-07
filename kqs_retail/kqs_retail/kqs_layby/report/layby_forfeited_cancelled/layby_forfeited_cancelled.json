@@ -1,0 +1,52 @@
+{
+ "add_total_row": 1,
+ "apply_user_permissions": 1,
+ "creation": "2026-07-06 10:00:00.000000",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "mandatory": 1,
+   "options": "Company"
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date"
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date"
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Store",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "\nCancelled\nForfeited"
+  }
+ ],
+ "is_standard": "Yes",
+ "json": "{}",
+ "module": "KQS Layby",
+ "name": "Layby Forfeited Cancelled",
+ "ref_doctype": "Layby Agreement",
+ "report_name": "Layby Forfeited Cancelled",
+ "report_type": "Script Report",
+ "roles": [
+  {"role": "Sales Manager"},
+  {"role": "Accounts Manager"},
+  {"role": "KQS Store Manager"},
+  {"role": "System Manager"}
+ ]
+}

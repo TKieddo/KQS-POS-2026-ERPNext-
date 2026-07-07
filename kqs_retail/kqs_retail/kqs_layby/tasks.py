@@ -21,10 +21,12 @@ def check_overdue_laybys():
 		fields=["name", "customer_name", "balance_amount", "due_date"],
 	)
 	for row in overdue:
+		days_past = frappe.utils.date_diff(frappe.utils.today(), row.due_date)
 		frappe.logger("kqs_retail").info(
-			"Layby overdue for review: %s customer=%s balance=%s",
+			"Layby overdue for review: %s customer=%s balance=%s due=%s days_past=%s",
 			row.name,
 			row.customer_name,
 			row.balance_amount,
+			row.due_date,
+			days_past,
 		)
-	# v2: auto-forfeit or notify manager

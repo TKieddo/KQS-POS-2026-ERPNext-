@@ -3,7 +3,7 @@
 Standard point-of-sale capabilities for KQS apparel/footwear stores.  
 Tick items as you complete them: change `[ ]` to `[x]`.
 
-**Last updated:** 2026-06-29
+**Last updated:** 2026-07-06
 
 ---
 
@@ -30,7 +30,7 @@ Tick items as you complete them: change `[ ]` to `[x]`.
 | [ ] | Open register / opening float | *(ERPNext)* POS Opening Entry |
 | [ ] | Close register / cash up | *(ERPNext)* POS Closing Entry |
 | [ ] | Count cash vs system totals | *(ERPNext)* Closing entry reconciliation |
-| [ ] | Multiple payment methods (Cash, Bank, Mpesa, Eco-Cash) | *(KQS)* Synced on migrate |
+| [ ] | Multiple payment methods (Cash, Bank, Mpesa, Eco-Cash, Store Credit) | *(KQS)* Synced on migrate |
 | [ ] | Split payment (e.g. part cash, part mobile money) | *(KQS)* Cashier enters each amount |
 | [ ] | Change / balance calculation from tendered amount | *(KQS)* No auto-fill on payment rows |
 | [ ] | Hold / park sale | *(ERPNext)* Draft invoice |
@@ -67,12 +67,25 @@ Tick items as you complete them: change `[ ]` to `[x]`.
 
 | Done | Feature | Notes |
 |:----:|---------|-------|
-| [ ] | Return against original receipt | *(ERPNext)* POS → past orders → Return |
+| [ ] | Return against original receipt | *(ERPNext)* POS → past orders → Return — see [exchange-rules.md](exchange-rules.md) |
 | [ ] | Partial return (some items only) | *(ERPNext)* |
-| [ ] | Refund to original payment method | *(ERPNext)* Credit note |
-| [ ] | Store credit / gift voucher | Not built |
-| [ ] | Exchange (return + new sale linked) | Planned v2 |
-| [ ] | Return without receipt (policy) | *(ERPNext)* Manual credit note in Desk |
+| [ ] | Refund to original payment method | *(ERPNext)* Credit note — policy: exchange or store credit only |
+| [ ] | Store credit / account balance at POS | *(KQS)* Store Credit MOP + balance banner + allocation |
+| [ ] | Return for store credit (named customer) | *(KQS)* **Return** on receipt → Customer Link (select or create) |
+| [ ] | Exchange (return + new sale linked) | Deferred — use return + credit + later sale |
+| [ ] | Return without receipt (policy) | Desk only — see [exchange-rules.md](exchange-rules.md) |
+
+---
+
+## 3b. Customer account (amount owed)
+
+| Done | Feature | Notes |
+|:----:|---------|-------|
+| [x] | **Customer Account** at till | *(KQS)* POS menu — search customers, balances, history, collect Cash / M-Pesa / Eco-Cash; posts Payment Entry (Receive) |
+| [ ] | Sell on account at checkout | *(KQS)* On Account payment tile + credit limit — see [customer-account.md](customer-account.md) |
+| [ ] | POS account banner (Owes / Credit / Layby) | *(KQS)* Named customer selected |
+
+Policy reference: [customer-account.md](customer-account.md)
 
 ---
 
@@ -83,13 +96,13 @@ Tick items as you complete them: change `[ ]` to `[x]`.
 | [ ] | Open layby from till | *(KQS)* Layby button on cart |
 | [ ] | Minimum deposit rule (e.g. 20%) | *(KQS)* KQS Retail Settings |
 | [ ] | Stock reserved while layby active | *(KQS)* Stock Reservation Entry |
-| [ ] | Installment payments at till | *(KQS)* Layby Lookup & Pay (POS menu) |
-| [ ] | Search layby (name, agreement number) | *(KQS)* |
-| [ ] | Auto-complete when fully paid | *(KQS)* Creates Sales Invoice |
-| [ ] | Cancel layby from till | Not built — Desk only |
-| [ ] | Refund on cancel (7-day / 50% policy) | Rules in `layby-rules.md`; no workflow |
-| [ ] | Change items on active layby | Planned v2 |
-| [ ] | Overdue / forfeit handling | Daily job logs only; no manager UI |
+| [x] | Installment payments at till | *(KQS)* Layby Lookup & Pay full-screen hub (POS menu) |
+| [x] | Search layby (name, agreement number) | *(KQS)* Left panel in Layby hub |
+| [x] | Auto-complete when fully paid | *(KQS)* Creates Sales Invoice |
+| [x] | Cancel layby from till | *(KQS)* Layby hub → dedicated Cancel screen |
+| [x] | Refund on cancel (7-day / 50% policy) | *(KQS)* Payment Entry Pay from till |
+| [x] | Change items on active layby | *(KQS)* Layby hub → dedicated Change item flow |
+| [x] | Overdue / forfeit handling | *(KQS)* Layby hub Forfeit screen + Overdue report |
 
 Policy reference: [layby-rules.md](layby-rules.md)
 
@@ -154,7 +167,7 @@ Setup reference: [store-setup.md](store-setup.md)
 
 | Done | Feature | Notes |
 |:----:|---------|-------|
-| [ ] | Cashier role — POS only | *(KQS)* `KQS Cashier` |
+| [x] | Cashier role — POS only | *(KQS)* `KQS Cashier` — see [cashier-permissions.md](cashier-permissions.md) |
 | [ ] | Manager role — catalog and stock | *(KQS)* `KQS Store Manager` |
 | [ ] | HQ / admin full access | *(ERPNext)* System Manager |
 | [ ] | Permissions for refund and discount | *(ERPNext)* Tune per role |
@@ -172,9 +185,10 @@ Setup reference: [store-setup.md](store-setup.md)
 | [ ] | Best-selling items | *(ERPNext)* Item reports |
 | [ ] | Returns summary | *(ERPNext)* Credit note reports |
 | [ ] | End-of-day / Z-report print | *(ERPNext)* POS Closing Entry |
-| [ ] | Layby — open agreements list | *(KQS)* Layby Agreement list; no custom report |
-| [ ] | Layby — deposits held (liability) | Not built |
-| [ ] | Layby — overdue list | Not built |
+| [x] | Layby — open agreements list | *(KQS)* Layby Open Summary report |
+| [x] | Layby — deposits held (liability) | *(KQS)* Layby Deposits Held report |
+| [x] | Layby — overdue list | *(KQS)* Layby Overdue report |
+| [x] | Layby — forfeited / cancelled | *(KQS)* Layby Forfeited Cancelled report |
 | [ ] | Export to Excel | *(ERPNext)* Any list / report |
 
 ---
@@ -217,15 +231,15 @@ Setup reference: [store-setup.md](store-setup.md)
 4. Production users and roles (section 8)  
 5. Go-live checklist (section 10)
 
-**Phase B — Build before multi-store live**  
-1. Layby cancel + refund workflow (section 4)  
-2. Layby reports (section 9)  
-3. Overdue / forfeit manager action (section 4)
+**Phase B — Build before multi-store live** *(implemented 2026-07-06)*  
+1. ~~Layby cancel + refund workflow (section 4)~~  
+2. ~~Layby reports (section 9)~~  
+3. ~~Overdue / forfeit manager action (section 4)~~  
+4. ~~Change items on active layby (section 4)~~
 
 **Phase C — v2 when stores are stable**  
-1. Exchange (section 3)  
-2. Change items on layby (section 4)  
-3. Manager PIN (section 8)
+1. Exchange linked document (section 3)  
+2. Manager PIN (section 8)
 
 ---
 
@@ -234,6 +248,8 @@ Setup reference: [store-setup.md](store-setup.md)
 | Document | Purpose |
 |----------|---------|
 | [layby-rules.md](layby-rules.md) | Layby business policy |
+| [exchange-rules.md](exchange-rules.md) | Returns, store credit, exchange policy |
+| [spike-store-credit-pos.md](spike-store-credit-pos.md) | ERPNext v16 store credit spike notes |
 | [store-setup.md](store-setup.md) | Warehouses, POS profiles, payments |
 | [deployment.md](deployment.md) | Staging, production, tablet checklist |
 | [INSTALL.md](INSTALL.md) | Local dev setup |

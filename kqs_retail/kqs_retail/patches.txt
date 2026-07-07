@@ -1,1 +1,3 @@
 # KQS Retail patches
+kqs_retail.patches.pos_on_account_return_fix
+kqs_retail.patches.restore_standard_docperms

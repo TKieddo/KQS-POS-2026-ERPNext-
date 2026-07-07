@@ -19,13 +19,20 @@ Your running ERPNext site lives in Docker volumes (`sites`, database). Back that
 .\scripts\backup-dev-site.ps1
 ```
 
-Output goes to `backups/` (gitignored). Copy those folders to cloud storage.
+Output goes to `backups/` (gitignored). Each run creates a folder with four files:
+
+- `*-database.sql.gz` — products, customers, sales, laybys
+- `*-site_config_backup.json` — site settings
+- `*-files.tar` — public uploads (product images)
+- `*-private-files.tar` — private attachments
+
+Copy the whole folder to cloud storage.
 
 ### Restore (dev)
 
 1. Start the stack: `cd docker; .\setup-dev.ps1`
-2. Copy backup files into the container’s `sites/frontend/private/backups/`
-3. Run: `bench --site frontend restore /path/to/backup.sql.gz`
+2. Copy all four backup files into the container’s `sites/frontend/private/backups/`
+3. Run: `bench --site frontend restore /path/to/*-database.sql.gz`
 
 ## Push code to GitHub
 

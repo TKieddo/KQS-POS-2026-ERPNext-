@@ -45,6 +45,94 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Customers",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Customer",
+   "link_count": 0,
+   "link_to": "Customer",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Customer Account Summary",
+   "link_count": 0,
+   "link_to": "Customer Account Summary",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Layby Reports",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Layby Open Summary",
+   "link_count": 0,
+   "link_to": "Layby Open Summary",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Layby Deposits Held",
+   "link_count": 0,
+   "link_to": "Layby Deposits Held",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Layby Overdue",
+   "link_count": 0,
+   "link_to": "Layby Overdue",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Layby Forfeited Cancelled",
+   "link_count": 0,
+   "link_to": "Layby Forfeited Cancelled",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Accounts Receivable",
+   "link_count": 0,
+   "link_to": "Accounts Receivable",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Settings",
    "link_count": 0,
    "link_type": "DocType",
@@ -121,9 +209,6 @@
  "quick_lists": [],
  "restrict_to_domain": "",
  "roles": [
-  {
-   "role": "Sales User"
-  },
   {
    "role": "Sales Manager"
   },
