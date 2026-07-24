@@ -54,7 +54,10 @@ boot_session = [
 	"kqs_retail.boot.inject_kqs_retail_settings",
 ]
 
-before_request = ["kqs_retail.permissions.cashier_desk.block_cashier_desk_browsing"]
+before_request = [
+	"kqs_retail.boot.ensure_runtime_patches",
+	"kqs_retail.permissions.cashier_desk.block_cashier_desk_browsing",
+]
 
 permission_query_conditions = {
 	"Sales Invoice": "kqs_retail.permissions.cashier_desk.sales_invoice_query",
@@ -83,6 +86,7 @@ after_migrate = [
 	"kqs_retail.setup.customer_fields.ensure_customer_custom_fields",
 	"kqs_retail.setup.invoice_fields.ensure_invoice_custom_fields",
 	"kqs_retail.setup.store_credit.ensure_store_credit_setup",
+	"kqs_retail.setup.receipt_print_formats.ensure_receipt_print_formats",
 ]
 
 doc_events = {

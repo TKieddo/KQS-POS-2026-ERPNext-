@@ -3,8 +3,16 @@
 import frappe
 
 
+def ensure_runtime_patches():
+	"""Apply POS monkey-patches once per worker (safe if already applied)."""
+	from kqs_retail import apply_runtime_patches
+
+	apply_runtime_patches()
+
+
 def redirect_cashier_to_pos(bootinfo):
 	"""Send KQS Cashier users to Point of Sale after login."""
+	ensure_runtime_patches()
 	from kqs_retail.utils.cashier_security import is_kqs_cashier_only
 
 	if is_kqs_cashier_only():
@@ -19,6 +27,7 @@ def redirect_cashier_to_pos(bootinfo):
 
 def inject_kqs_retail_settings(bootinfo):
 	"""Expose layby/POS policy to Desk and Point of Sale."""
+	ensure_runtime_patches()
 	from kqs_retail.kqs_layby.settings import get_kqs_retail_settings_for_boot
 
 	bootinfo["kqs_retail_settings"] = get_kqs_retail_settings_for_boot()
