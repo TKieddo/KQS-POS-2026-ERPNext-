@@ -1,11 +1,9 @@
 {# KQS Receipt Classic — matches clear KQS thermal slip #}
 <div class="kqs-rcpt">
 	{{ kqs_logo() }}
+	{{ kqs_header_brand() }}
 
-	<div class="kqs-center kqs-muted-line">
-		DATE: {{ doc.get_formatted("posting_date") }}
-		{%- if doc.posting_time %} {{ doc.get_formatted("posting_time") }}{%- endif %}
-	</div>
+	{{ kqs_meta_stack() }}
 
 	<div class="kqs-total-big kqs-center">
 		<span class="label">Total:</span> {{ kqs_money(doc.grand_total) }}
@@ -62,15 +60,11 @@
 
 	<div class="kqs-script">{{ kqs_tagline() }}</div>
 
-	<div class="kqs-cashier">Cashier: {{ kqs_cashier_name() }}</div>
-
 	{{ kqs_policy() }}
 
 	<hr class="kqs-rule" />
 	<div class="kqs-thanks">Thank You for shopping with us</div>
 	<hr class="kqs-rule" />
 
-	{{ kqs_contact_footer() }}
-
-	<div class="kqs-center kqs-muted-line" style="margin-top: 2mm;">{{ doc.name }}</div>
+	{{ kqs_social_footer() }}
 </div>

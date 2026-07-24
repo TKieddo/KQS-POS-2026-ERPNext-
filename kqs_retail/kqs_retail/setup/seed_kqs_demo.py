@@ -561,6 +561,7 @@ def _ensure_pos_profile_receipt_contact(profile_name: str) -> None:
 		"kqs_receipt_address": "Mafeteng, Old Matelile Taxi Rank",
 		"kqs_receipt_phone": "27005084",
 		"kqs_receipt_facebook": "KQS Footware",
+		"kqs_receipt_whatsapp": "27005084",
 		"kqs_receipt_website": "kbfootware.com",
 	}
 	for field, value in defaults.items():

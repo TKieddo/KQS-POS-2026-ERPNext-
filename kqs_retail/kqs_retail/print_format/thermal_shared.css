@@ -75,6 +75,17 @@
 	margin: 1mm 0 2mm;
 }
 
+.kqs-meta-stack {
+	font-size: 10pt;
+	font-weight: 700;
+	margin: 2mm 0;
+	line-height: 1.35;
+}
+
+.kqs-meta-stack div {
+	margin: 0.4mm 0;
+}
+
 .kqs-meta .col {
 	flex: 1;
 }
@@ -215,10 +226,26 @@
 	margin: 1mm 0;
 }
 
-.kqs-cashier {
-	font-size: 11pt;
-	font-weight: 800;
-	text-align: center;
-	text-transform: uppercase;
-	margin: 2mm 0;
+.kqs-social {
+	margin-top: 1mm;
+}
+
+.kqs-social-line {
+	display: flex;
+	align-items: center;
+	gap: 2mm;
+	font-size: 9.5pt;
+	font-weight: 700;
+	margin: 1.2mm 0;
+}
+
+.kqs-ico {
+	width: 3.2mm;
+	height: 3.2mm;
+	min-width: 3.2mm;
+	flex-shrink: 0;
+	display: inline-block;
+	vertical-align: middle;
+	-webkit-print-color-adjust: exact;
+	print-color-adjust: exact;
 }

@@ -1,0 +1,47 @@
+{# KQS Layby Reserve — Columns thermal (store / hold slip) #}
+<div class="kqs-rcpt kqs-mono">
+	{{ kqs_header_brand() }}
+
+	<div class="kqs-center kqs-policy-title" style="margin-top: 2mm;">Layby Reserve — Store Copy</div>
+
+	<hr class="kqs-rule" />
+	{{ kqs_meta_stack() }}
+	{%- if doc.due_date -%}
+	<div class="kqs-meta-stack" style="margin-top: 0;">
+		<div>Due: {{ doc.get_formatted("due_date") }}</div>
+		{%- if doc.warehouse -%}
+		<div>Warehouse: {{ doc.warehouse }}</div>
+		{%- endif -%}
+	</div>
+	{%- endif -%}
+	<hr class="kqs-rule" />
+
+	<div class="kqs-cols-head">
+		<span class="num">#</span>
+		<span>Item</span>
+		<span class="qty">Qty</span>
+		<span class="price">Hold</span>
+	</div>
+
+	{%- for row in doc.items -%}
+	<div class="kqs-cols-row">
+		<span class="num">{{ loop.index }}</span>
+		<span>
+			<span class="kqs-item-name">{{ row.item_name or row.item_code }}</span>
+			{%- if row.item_code -%}
+			<div class="kqs-item-sub">{{ row.item_code }}</div>
+			{%- endif -%}
+		</span>
+		<span class="qty">{{ row.qty }}</span>
+		<span class="price">HOLD</span>
+	</div>
+	{%- endfor -%}
+
+	<hr class="kqs-rule" />
+	<div class="kqs-row kqs-grand">
+		<span>Balance due</span>
+		<span>{{ kqs_money(doc.balance_amount) }}</span>
+	</div>
+	<hr class="kqs-rule" />
+	<div class="kqs-thanks">Keep with reserved stock</div>
+</div>

@@ -112,7 +112,7 @@ Policy reference: [layby-rules.md](layby-rules.md)
 
 | Done | Feature | Notes |
 |:----:|---------|-------|
-| [x] | Sale receipt — print | *(KQS)* Three formats: Classic / Columns / Hybrid — set on POS Profile |
+| [x] | Sale receipt — print | *(KQS)* **KQS Receipt Columns** (default) — Classic / Hybrid also available |
 | [ ] | Sale receipt — email | *(ERPNext)* After checkout |
 | [ ] | Reprint past receipt | *(ERPNext)* POS past orders |
 | [x] | Custom layout (logo, footer, terms) | *(KQS)* Thermal formats; policy in KQS Retail Settings; address on POS Profile |
@@ -120,10 +120,10 @@ Policy reference: [layby-rules.md](layby-rules.md)
 | [x] | Thermal paper width (e.g. 80mm) | *(KQS)* 72mm printable CSS in receipt formats |
 | [ ] | Direct thermal print (QZ Tray, no preview) | *(ERPNext)* Optional |
 | [ ] | Cash drawer open on sale | *(ERPNext)* Optional via QZ / printer |
-| [ ] | Layby — customer receipt | *(Configure)* Format + KQS Retail Settings |
-| [ ] | Layby — store / reserve slip | *(Configure)* Format + KQS Retail Settings |
-| [ ] | Layby — completion receipt | *(Configure)* Sales Invoice format + Settings |
-| [ ] | Auto-print layby receipts at till | *(KQS)* After create / pay / complete |
+| [x] | Layby — customer receipt | *(KQS)* **KQS Layby Customer** (Columns style) |
+| [x] | Layby — store / reserve slip | *(KQS)* **KQS Layby Reserve** |
+| [x] | Layby — completion receipt | *(KQS)* **KQS Receipt Columns (SI)** |
+| [x] | Auto-print layby receipts at till | *(KQS)* After create / pay / complete |
 
 **Where to configure:** Retail → POS Profile (sale receipt) · Setup → Print Format · KQS Retail Settings → Layby Receipts · see [store-setup.md](store-setup.md#thermal-sale-receipts-80mm)
 ---

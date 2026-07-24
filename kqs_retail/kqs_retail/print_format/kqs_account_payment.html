@@ -1,0 +1,50 @@
+{# KQS Account Payment — Columns thermal (Payment Entry) #}
+<div class="kqs-rcpt kqs-mono">
+	{{ kqs_logo() }}
+	{{ kqs_header_brand() }}
+
+	<div class="kqs-center kqs-policy-title" style="margin-top: 2mm;">Account Payment</div>
+
+	<hr class="kqs-rule" />
+	{{ kqs_meta_stack() }}
+	<hr class="kqs-rule" />
+
+	<div class="kqs-totals">
+		<div class="kqs-row kqs-grand">
+			<span>Amount paid</span>
+			<span>{{ kqs_money(doc.paid_amount) }}</span>
+		</div>
+		{%- if doc.mode_of_payment -%}
+		<div class="kqs-row">
+			<span>Method</span>
+			<span>{{ doc.mode_of_payment }}</span>
+		</div>
+		{%- endif -%}
+	</div>
+
+	{%- if doc.references -%}
+	<hr class="kqs-rule" />
+	<div class="kqs-muted-line" style="font-weight: 800; margin-bottom: 1mm;">Applied to</div>
+	{%- for ref in doc.references -%}
+		{%- if ref.allocated_amount -%}
+		<div class="kqs-row">
+			<span>
+				{%- set inv = ref.reference_name or "" -%}
+				{%- if inv.startswith("ACC-SINV-") -%}{{ inv[9:] }}
+				{%- elif inv.startswith("ACC-PSINV-") -%}{{ inv[10:] }}
+				{%- else -%}{{ inv }}
+				{%- endif -%}
+			</span>
+			<span>{{ kqs_money(ref.allocated_amount) }}</span>
+		</div>
+		{%- endif -%}
+	{%- endfor -%}
+	{%- endif -%}
+
+	<hr class="kqs-rule" />
+	<div class="kqs-thanks">Thank you for your payment!</div>
+	<hr class="kqs-rule" />
+
+	{{ kqs_policy() }}
+	{{ kqs_social_footer() }}
+</div>

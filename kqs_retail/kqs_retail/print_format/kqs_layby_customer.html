@@ -1,10 +1,17 @@
-{# KQS Receipt Columns — ISH-inspired monospaced / dashed layout #}
+{# KQS Layby Customer — Columns thermal (customer copy) #}
 <div class="kqs-rcpt kqs-mono">
 	{{ kqs_logo() }}
 	{{ kqs_header_brand() }}
 
+	<div class="kqs-center kqs-policy-title" style="margin-top: 2mm;">Layby Receipt</div>
+
 	<hr class="kqs-rule" />
 	{{ kqs_meta_stack() }}
+	{%- if doc.due_date -%}
+	<div class="kqs-meta-stack" style="margin-top: 0;">
+		<div>Due: {{ doc.get_formatted("due_date") }}</div>
+	</div>
+	{%- endif -%}
 	<hr class="kqs-rule" />
 
 	<div class="kqs-cols-head">
@@ -19,9 +26,8 @@
 		<span class="num">{{ loop.index }}</span>
 		<span>
 			<span class="kqs-item-name">{{ row.item_name or row.item_code }}</span>
-			{%- set detail = kqs_item_detail(row) -%}
-			{%- if detail -%}
-			<div class="kqs-item-sub">{{ detail }}</div>
+			{%- if row.item_code and row.item_code != row.item_name -%}
+			<div class="kqs-item-sub">{{ row.item_code }}</div>
 			{%- endif -%}
 		</span>
 		<span class="qty">{{ row.qty }}</span>
@@ -33,30 +39,22 @@
 
 	<div class="kqs-totals">
 		<div class="kqs-row">
-			<span>Subtotal</span>
-			<span>{{ kqs_money(doc.net_total or doc.total) }}</span>
-		</div>
-		{%- if doc.discount_amount -%}
-		<div class="kqs-row">
-			<span>Discount</span>
-			<span>- {{ kqs_money(doc.discount_amount) }}</span>
-		</div>
-		{%- endif -%}
-		{%- if doc.total_taxes_and_charges -%}
-		<div class="kqs-row">
-			<span>Tax</span>
-			<span>{{ kqs_money(doc.total_taxes_and_charges) }}</span>
-		</div>
-		{%- endif -%}
-		<div class="kqs-row kqs-grand">
 			<span>Total</span>
-			<span>{{ kqs_money(doc.grand_total) }}</span>
+			<span>{{ kqs_money(doc.total_amount) }}</span>
+		</div>
+		<div class="kqs-row">
+			<span>Deposit ({{ doc.deposit_percent }}%)</span>
+			<span>{{ kqs_money(doc.deposit_amount) }}</span>
+		</div>
+		<div class="kqs-row">
+			<span>Paid</span>
+			<span>{{ kqs_money(doc.paid_amount) }}</span>
+		</div>
+		<div class="kqs-row kqs-grand">
+			<span>Balance</span>
+			<span>{{ kqs_money(doc.balance_amount) }}</span>
 		</div>
 	</div>
-
-	<hr class="kqs-rule" />
-
-	{{ kqs_payments_block() }}
 
 	<hr class="kqs-rule" />
 	<div class="kqs-thanks">Thank you for shopping with us!</div>

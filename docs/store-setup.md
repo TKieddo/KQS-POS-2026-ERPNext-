@@ -45,24 +45,34 @@ Enable: **Update Stock**, **Allow Print Before Pay** (optional)
 
 ### Thermal sale receipts (80mm)
 
-After `bench migrate`, KQS installs three custom Print Formats (plus Sales Invoice copies for reprints):
+After `bench migrate`, KQS installs thermal Print Formats in the **Columns** style (your chosen till layout), plus Classic / Hybrid for sales if you still want to compare:
 
-| Print Format | Look |
-|--------------|------|
-| **KQS Receipt Classic** | Clear KQS slip: logo, large Total, shaded bars, Finest footware, policy + contact footer |
-| **KQS Receipt Columns** | ISH-style: dashed rules, mono columns (# / Item / Qty / Price), bold Total |
-| **KQS Receipt Hybrid** | Classic branding + column item rows |
+| Print Format | DocType | Use |
+|--------------|---------|-----|
+| **KQS Receipt Columns** | POS Invoice | Default sale receipt (set on POS Profile) |
+| **KQS Receipt Columns (SI)** | Sales Invoice | Layby complete / reprints |
+| **KQS Layby Customer** | Layby Agreement | Customer layby copy |
+| **KQS Layby Reserve** | Layby Agreement | Store hold slip |
+| **KQS Account Payment** | Payment Entry | Customer account pay |
 
-All use the block logo at `/assets/kqs_retail/images/kqs-receipt-logo.png`.
+Classic / Hybrid sale formats remain available to switch on a POS Profile if needed.
+
+These are linked automatically in **KQS Retail Settings** when those print-format fields are empty.
 
 **Choose one on the till:**
 
 1. **Retail → POS Profile** → open the store profile  
-2. Set **Print Format** to Classic, Columns, or Hybrid  
-3. Under **KQS Receipt Contact**, set this branch’s address / phone / Facebook / website  
+2. Set **Print Format** to **KQS Receipt Columns** (default when blank after migrate)  
+3. Under **KQS Receipt Contact**, set this branch’s **address** (under company name), Facebook, WhatsApp, and website  
 4. Save → reload `/app/point-of-sale`  
 5. Complete a test sale → Print  
 6. In the browser print dialog: select the 80mm thermal, margins **None**, scale **100%**, no headers/footers  
+
+**Layby / account pay:** formats are chosen under **KQS Retail Settings → Layby Receipts** and **Account Payment Receipts** (auto-filled to Columns-style formats on migrate).
+
+**Header:** Company name comes from **Company** in ERPNext (`doc.company`) — not hardcoded. Branch address is from the POS Profile.
+
+**Receipt number:** Series prefix (`ACC-PSINV-` / `ACC-SINV-`) is stripped so only the numeric part prints.
 
 **Policy & tagline (all stores):** **KQS Retail Settings → Sale Receipt Footer**
 
@@ -72,7 +82,9 @@ All use the block logo at `/assets/kqs_retail/images/kqs-receipt-logo.png`.
 | Receipt Policy Title | Bold heading on the slip |
 | Receipt Policy Text | Customer-facing exchange / return terms |
 
-Change policy there when rules change — do not edit Print Format HTML. Blank POS Profile contact fields fall back to **Company** phone / website.
+**Social footer (below policy):** Facebook / WhatsApp / website from POS Profile, with icons. Blank WhatsApp falls back to Receipt Phone; blank phone/website fall back to Company.
+
+Change policy in Settings when rules change — do not edit Print Format HTML.
 
 Switch formats anytime by changing the POS Profile field — no code change. Sales Invoice reprints use the matching `… (SI)` format when printing from Desk.
 
