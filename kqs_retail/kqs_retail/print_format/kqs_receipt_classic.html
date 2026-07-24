@@ -60,7 +60,7 @@
 		<span>{{ kqs_money(doc.change_amount or 0) }}</span>
 	</div>
 
-	<div class="kqs-script">Finest footware</div>
+	<div class="kqs-script">{{ kqs_tagline() }}</div>
 
 	<div class="kqs-cashier">Cashier: {{ kqs_cashier_name() }}</div>
 
@@ -70,10 +70,7 @@
 	<div class="kqs-thanks">Thank You for shopping with us</div>
 	<hr class="kqs-rule" />
 
-	<div class="kqs-footer-line">{{ kqs_store_address() }}</div>
-	<div class="kqs-footer-line">KQS Footware</div>
-	<div class="kqs-footer-line">{{ kqs_company_phone() }}</div>
-	<div class="kqs-footer-line">{{ kqs_company_website() }}</div>
+	{{ kqs_contact_footer() }}
 
 	<div class="kqs-center kqs-muted-line" style="margin-top: 2mm;">{{ doc.name }}</div>
 </div>

@@ -1,5 +1,5 @@
 /* Copyright (c) 2026, KQS â€” Layby, returns & checkout flow for ERPNext Point of Sale */
-const KQS_POS_PAGE_SCRIPT_VERSION = 45;
+const KQS_POS_PAGE_SCRIPT_VERSION = 49;
 
 frappe.provide("kqs_retail.pos_returns");
 
@@ -5391,20 +5391,10 @@ frappe.provide("kqs_retail.point_of_sale");
 			return Promise.resolve(false);
 		}
 
-		const diff = grand - allocated;
-		if (Math.abs(diff) > 0.02) {
-			if (allocated > grand + 0.02) {
-				frappe.msgprint({
-					title: __("Payment too high"),
-					indicator: "red",
-					message: __("Payments total {0} exceeds sale total {1}. Adjust the amounts entered.", [
-						format_currency(allocated, currency),
-						format_currency(grand, currency),
-					]),
-				});
-				return Promise.resolve(false);
-			}
-			const shortfall = Math.max(0, diff);
+		// Cash/card/mobile over the sale is change (ERPNext change_amount + receipt print).
+		// Only underpayment is blocked here; store credit caps are checked separately.
+		const shortfall = grand - allocated;
+		if (shortfall > 0.02) {
 			if (account <= 0.01) {
 				frappe.msgprint({
 					title: __("Payment incomplete"),
@@ -5915,8 +5905,41 @@ frappe.provide("kqs_retail.point_of_sale");
 		wrap_pos_submit_invoice(pos);
 	}
 
+	function submit_pos_invoice_without_confirm(frm) {
+		/** Skip Frappe's "Permanently Submit?" dialog — Complete Order is already the confirm. */
+		return new Promise((resolve, reject) => {
+			try {
+				frm.validate_form_action("Submit");
+			} catch (e) {
+				reject(e);
+				return;
+			}
+			frappe.validated = true;
+			frm.script_manager.trigger("before_submit").then(() => {
+				if (!frappe.validated) {
+					reject();
+					return;
+				}
+				frm.save(
+					"Submit",
+					(r) => {
+						if (r?.exc) {
+							reject(r);
+							return;
+						}
+						frappe.utils.play_sound("submit");
+						frm.script_manager.trigger("on_submit").then(() => resolve(frm));
+					},
+					null,
+					() => reject()
+				);
+			});
+		});
+	}
+
 	function wrap_pos_submit_invoice(pos) {
-		if (!pos?.payment || pos.payment._kqs_submit_wrapped) return;
+		if (!pos?.payment) return;
+		// Always rebind so a stale in-memory handler cannot keep the old overpayment block.
 		pos.payment.events.submit_invoice = async () => {
 			const frm = pos.frm;
 			const is_return = frm?.doc?.is_return;
@@ -5941,27 +5964,32 @@ frappe.provide("kqs_retail.point_of_sale");
 			if (!account_ok) {
 				return;
 			}
-			frm.savesubmit().then((r) => {
+			try {
+				const submitted = await submit_pos_invoice_without_confirm(frm);
 				pos.toggle_components(false);
 				pos.toggle_submitted_invoice_summary(true);
 				if (is_return) {
-					frappe.msgprint({
-						title: __("Return complete"),
-						indicator: "green",
-						message: __(
-							"Credit note {0} submitted. Store credit is on account {1}.",
-							[r.doc.name, customer_label || __("customer")]
-						),
-					});
+					frappe.show_alert(
+						{
+							indicator: "green",
+							message: __(
+								"Credit note {0} submitted. Store credit is on account {1}.",
+								[submitted.doc.name, customer_label || __("customer")]
+							),
+						},
+						8
+					);
 				} else {
 					frappe.show_alert({
 						indicator: "green",
-						message: __("POS invoice {0} created successfully", [r.doc.name]),
+						message: __("POS invoice {0} created successfully", [submitted.doc.name]),
 					});
 				}
-			});
+			} catch (e) {
+				console.error(e);
+			}
 		};
-		pos.payment._kqs_submit_wrapped = true;
+		pos.payment._kqs_submit_wrapped_v4 = true;
 	}
 
 	function default_payment_mode(frm) {
@@ -8284,15 +8312,177 @@ frappe.provide("kqs_retail.point_of_sale");
 		Payment.prototype._kqs_payment_patched = true;
 	}
 
-	function patch_outdated_opening_prompt() {
-		if (typeof kqs_retail?.pos_bootstrap?.patch_outdated_opening_prompt === "function") {
-			kqs_retail.pos_bootstrap.patch_outdated_opening_prompt();
+	function prepare_closing_and_route(pos_opening_entry) {
+		if (!pos_opening_entry) {
+			frappe.msgprint(__("No open POS session found."));
 			return;
 		}
-		if (!window.erpnext?.PointOfSale?.Controller) return;
-		if (typeof kqs_retail?.pos_bootstrap?.install_early_pos_patches === "function") {
-			kqs_retail.pos_bootstrap.install_early_pos_patches();
+		frappe.call({
+			method: "kqs_retail.api.pos_closing.prepare_closing_entry",
+			args: { pos_opening_entry },
+			freeze: true,
+			freeze_message: __("Preparing POS closing..."),
+			callback(r) {
+				if (r.exc || !r.message?.name) {
+					return;
+				}
+				frappe.set_route("Form", "POS Closing Entry", r.message.name);
+			},
+		});
+	}
+
+	function show_till_blocked_dialog(data) {
+		const opening = data.opening || {};
+		const who = opening.user || __("another user");
+		const profile = opening.pos_profile || __("this till");
+		const fields = [
+			{
+				fieldtype: "HTML",
+				options: `<p>${__(
+					"{0} is already open by {1}. Close that session before opening a new one.",
+					[frappe.utils.escape_html(profile), frappe.utils.escape_html(who)]
+				)}</p>`,
+			},
+		];
+		const d = new frappe.ui.Dialog({
+			title: __("Till already open"),
+			fields,
+			primary_action_label: data.can_close ? __("Close that session") : __("OK"),
+			primary_action() {
+				d.hide();
+				if (data.can_close && opening.name) {
+					prepare_closing_and_route(opening.name);
+				}
+			},
+		});
+		if (data.can_close) {
+			d.set_secondary_action_label(__("Cancel"));
+			d.set_secondary_action(() => d.hide());
 		}
+		d.show();
+	}
+
+	function patch_pos_opening_session_flow() {
+		if (!window.erpnext?.PointOfSale?.Controller) return;
+		const Controller = erpnext.PointOfSale.Controller;
+		if (Controller.prototype._kqs_opening_flow_patched) return;
+
+		Controller.prototype.check_opening_entry = function () {
+			const me = this;
+			frappe
+				.call({
+					method: "kqs_retail.api.pos.resolve_pos_opening_entry",
+					args: { user: frappe.session.user },
+				})
+				.then((r) => {
+					const data = r.message || {};
+					if (data.action === "resume" && data.opening) {
+						me.prepare_app_defaults(data.opening);
+						return;
+					}
+					if (data.action === "close" && data.opening?.name) {
+						frappe.show_alert(
+							{
+								message: __("Till was opened on a previous day — closing now."),
+								indicator: "orange",
+							},
+							6
+						);
+						prepare_closing_and_route(data.opening.name);
+						return;
+					}
+					if (data.action === "blocked" && data.opening) {
+						show_till_blocked_dialog(data);
+						return;
+					}
+					if (data.default_pos_profile) {
+						me._kqs_default_pos_profile = data.default_pos_profile;
+					}
+					if (data.other_open_profiles?.length) {
+						const names = data.other_open_profiles
+							.map((row) => `${row.pos_profile} (${row.user})`)
+							.join(", ");
+						frappe.show_alert(
+							{
+								message: __("Other tills already open: {0}", [names]),
+								indicator: "orange",
+							},
+							8
+						);
+					}
+					me.create_opening_voucher();
+					if (me._kqs_default_pos_profile) {
+						frappe.after_ajax(() => {
+							const dlg = cur_dialog;
+							if (dlg?.fields_dict?.pos_profile) {
+								dlg.set_value("pos_profile", me._kqs_default_pos_profile);
+							}
+						});
+					}
+				})
+				.catch(() => {
+					me.fetch_opening_entry().then((r) => {
+						if (r.message?.length) {
+							me.prepare_app_defaults(r.message[0]);
+						} else {
+							me.create_opening_voucher();
+						}
+					});
+				});
+		};
+
+		Controller.prototype.check_outdated_pos_opening_entry = function () {
+			if (
+				!this.pos_opening_time ||
+				!frappe.datetime.get_day_diff(
+					frappe.datetime.get_today(),
+					String(this.pos_opening_time).slice(0, 10)
+				)
+			) {
+				return;
+			}
+			frappe.show_alert(
+				{
+					message: __("Till was opened on a previous day — closing now."),
+					indicator: "orange",
+				},
+				6
+			);
+			prepare_closing_and_route(this.pos_opening);
+		};
+
+		Controller.prototype._kqs_opening_flow_patched = true;
+	}
+
+	function wrap_point_of_sale_page_load() {
+		const page = frappe.pages?.["point-of-sale"];
+		if (!page?.on_page_load || page._kqs_opening_page_wrapped) {
+			return Boolean(page?._kqs_opening_page_wrapped);
+		}
+		page._kqs_opening_page_wrapped = true;
+		const orig = page.on_page_load;
+		page.on_page_load = function (wrapper) {
+			// Register patches before ERPNext's require callback creates Controller.
+			frappe.require("point-of-sale.bundle.js", () => {
+				patch_pos_opening_session_flow();
+				apply_all_kqs_pos_patches();
+			});
+			return orig.call(this, wrapper);
+		};
+		const orig_refresh = page.refresh;
+		if (orig_refresh && !page._kqs_opening_refresh_wrapped) {
+			page._kqs_opening_refresh_wrapped = true;
+			page.refresh = function (wrapper) {
+				patch_pos_opening_session_flow();
+				return orig_refresh.call(this, wrapper);
+			};
+		}
+		return true;
+	}
+
+	function patch_outdated_opening_prompt() {
+		patch_pos_opening_session_flow();
+		wrap_point_of_sale_page_load();
 	}
 
 	function patch_pos_controller() {
@@ -8491,7 +8681,7 @@ frappe.provide("kqs_retail.point_of_sale");
 	function apply_all_kqs_pos_patches() {
 		wrap_payment_class();
 		patch_pos_payment();
-		patch_outdated_opening_prompt();
+		patch_pos_opening_session_flow();
 		patch_pos_controller();
 		patch_pos_cart();
 		patch_item_selector();
@@ -8500,6 +8690,7 @@ frappe.provide("kqs_retail.point_of_sale");
 	}
 
 	function schedule_kqs_pos_patches() {
+		wrap_point_of_sale_page_load();
 		if (window.erpnext?.PointOfSale?.Controller) {
 			apply_all_kqs_pos_patches();
 			return;

@@ -4,8 +4,10 @@
 
 	<div class="kqs-center">
 		<div class="kqs-store-name">{{ doc.company }}</div>
-		<div class="kqs-muted-line">{{ kqs_store_address() }}</div>
-		<div class="kqs-muted-line">{{ kqs_company_phone() }}</div>
+		{%- set addr = kqs_store_address() -%}
+		{%- if addr -%}<div class="kqs-muted-line">{{ addr }}</div>{%- endif -%}
+		{%- set phone = kqs_receipt_phone() -%}
+		{%- if phone -%}<div class="kqs-muted-line">{{ phone }}</div>{%- endif -%}
 	</div>
 
 	<hr class="kqs-rule" />

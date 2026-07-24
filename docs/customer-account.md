@@ -45,7 +45,7 @@ Loyal customers may take goods now and pay the remainder later. This posts **Acc
 1. Select eligible customer → banner shows current **Owes** (AR) and **Credit available** (limit minus AR).
 2. Add items → checkout → enter amounts on payment tiles: **Cash** / **M-Pesa** / **Store Credit** as needed.
 3. For the debt portion, enter an amount on the **On Account** payment tile (not automatic from leftover cash).
-4. **Complete order** only works when payment rows **exactly total** the sale (cash + store credit + on account = grand total).
+4. **Complete order** when payments cover the sale. Cash/card/mobile may exceed the total (change is calculated and printed on the receipt). With **On Account**, rows must still match the sale (no change mixed with debt).
 5. Customer pays later via **Customer Account** (POS menu) or **Payment Entry (Receive)** in Desk.
 
 ### Manager setup

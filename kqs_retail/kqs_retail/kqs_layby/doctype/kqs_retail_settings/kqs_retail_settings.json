@@ -23,6 +23,10 @@
   "section_break_ar_receipts",
   "auto_print_ar_payment_receipts",
   "ar_payment_print_format",
+  "section_break_sale_receipt",
+  "receipt_tagline",
+  "receipt_policy_title",
+  "receipt_policy_text",
   "section_break_notes",
   "layby_policy_notes"
  ],
@@ -160,6 +164,32 @@
    "fieldtype": "Link",
    "label": "Account Payment Print Format",
    "options": "Print Format"
+  },
+  {
+   "fieldname": "section_break_sale_receipt",
+   "fieldtype": "Section Break",
+   "label": "Sale Receipt Footer"
+  },
+  {
+   "default": "Finest footware",
+   "description": "Short line under payments on Classic / Hybrid thermal receipts (e.g. Finest footware).",
+   "fieldname": "receipt_tagline",
+   "fieldtype": "Data",
+   "label": "Receipt Tagline"
+  },
+  {
+   "default": "Exchanges within 30 days",
+   "description": "Bold heading above the policy paragraph on thermal sale receipts.",
+   "fieldname": "receipt_policy_title",
+   "fieldtype": "Data",
+   "label": "Receipt Policy Title"
+  },
+  {
+   "default": "Receipt required. Exchange or store credit only — no cash refund.",
+   "description": "Customer-facing exchange / return terms on thermal sale receipts. Update here when policy changes — do not edit Print Format HTML.",
+   "fieldname": "receipt_policy_text",
+   "fieldtype": "Small Text",
+   "label": "Receipt Policy Text"
   },
   {
    "fieldname": "section_break_notes",

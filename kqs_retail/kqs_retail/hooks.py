@@ -33,6 +33,9 @@ app_include_js = "public/js/cashier_desk_guard.js"
 
 override_whitelisted_methods = {
 	"erpnext.selling.page.point_of_sale.point_of_sale.get_items": "kqs_retail.api.pos.get_items",
+	"erpnext.selling.page.point_of_sale.point_of_sale.check_opening_entry": (
+		"kqs_retail.api.pos.check_opening_entry"
+	),
 }
 
 doctype_js = {
@@ -86,6 +89,7 @@ after_migrate = [
 	"kqs_retail.setup.customer_fields.ensure_customer_custom_fields",
 	"kqs_retail.setup.invoice_fields.ensure_invoice_custom_fields",
 	"kqs_retail.setup.store_credit.ensure_store_credit_setup",
+	"kqs_retail.setup.pos_profile_fields.ensure_pos_profile_receipt_fields",
 	"kqs_retail.setup.receipt_print_formats.ensure_receipt_print_formats",
 ]
 

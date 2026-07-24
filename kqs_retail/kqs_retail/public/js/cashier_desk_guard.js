@@ -1,14 +1,21 @@
 /* Copyright (c) 2026, KQS — Keep KQS Cashier on Point of Sale, not full Desk. */
 (function () {
 	const POS_PAGE_KEY = "_page:point-of-sale";
-	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 45";
+	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 49";
 
 	function bust_stale_pos_page_cache() {
 		try {
 			const raw = localStorage.getItem(POS_PAGE_KEY);
 			if (!raw) return;
 			const page = JSON.parse(raw);
-			if ((page?.script || "").includes(POS_SCRIPT_VERSION)) return;
+			const script = page?.script || "";
+			// Drop cached page if version mismatch or old overpayment blocker is still present.
+			if (
+				script.includes(POS_SCRIPT_VERSION) &&
+				!script.includes("exceeds sale total")
+			) {
+				return;
+			}
 			localStorage.removeItem(POS_PAGE_KEY);
 			if (locals?.Page?.["point-of-sale"]) {
 				delete locals.Page["point-of-sale"];
@@ -37,12 +44,76 @@
 			} else if (opts?.title) {
 				title = String(opts.title);
 			}
-			if (title.includes("Outdated POS Opening Entry")) {
-				kqs_show_outdated_opening_dialog();
+			if (
+				title.includes("Outdated POS Opening Entry") ||
+				title.includes("POS Opening Entry Exists") ||
+				title.includes("Cannot Assign Cashier")
+			) {
+				kqs_resolve_opening_conflict(title);
 				return;
 			}
 			return orig_msgprint(opts, ...rest);
 		};
+	}
+
+	function kqs_resolve_opening_conflict(title) {
+		if (window._kqs_opening_conflict_busy) {
+			return;
+		}
+		window._kqs_opening_conflict_busy = true;
+		$(".modal").modal("hide");
+
+		frappe.call({
+			method: "kqs_retail.api.pos.resolve_pos_opening_entry",
+			callback(r) {
+				window._kqs_opening_conflict_busy = false;
+				if (r.exc) {
+					return;
+				}
+				const data = r.message || {};
+				if (data.action === "resume" && data.opening?.name) {
+					frappe.show_alert(
+						{
+							message: __("Resuming your open till…"),
+							indicator: "blue",
+						},
+						4
+					);
+					frappe.set_route("point-of-sale");
+					setTimeout(() => window.location.reload(), 200);
+					return;
+				}
+				if (data.action === "close" && data.opening?.name) {
+					frappe.show_alert(
+						{
+							message: __("Till was opened on a previous day — closing now."),
+							indicator: "orange",
+						},
+						6
+					);
+					kqs_prepare_and_open_closing(data.opening.name);
+					return;
+				}
+				// Someone else still has this profile open (or no session for this user).
+				if (String(title || "").includes("POS Opening Entry Exists")) {
+					frappe.show_alert(
+						{
+							message: __(
+								"This till is already open. Close the open session, then try again."
+							),
+							indicator: "orange",
+						},
+						6
+					);
+					kqs_open_pos_closing();
+					return;
+				}
+				kqs_show_outdated_opening_dialog();
+			},
+			error() {
+				window._kqs_opening_conflict_busy = false;
+			},
+		});
 	}
 
 	function kqs_prepare_and_open_closing(pos_opening_entry) {
@@ -242,12 +313,32 @@
 		);
 	}
 
+	function redirect_cashier_to_pos_home() {
+		if (!is_cashier_pos_only()) {
+			return;
+		}
+		const path = (window.location.pathname || "").replace(/\/+$/, "") || "/";
+		const route = frappe.get_route_str?.() || "";
+		const on_desk_home =
+			path === "/desk" ||
+			path === "/app" ||
+			route === "" ||
+			route === "Workspaces" ||
+			route.startsWith("Workspaces/") ||
+			route === "workspace" ||
+			route.startsWith("workspace/");
+		if (on_desk_home) {
+			frappe.set_route("point-of-sale");
+		}
+	}
+
 	function guard_route() {
 		if (!is_cashier_pos_only()) {
 			return;
 		}
 		const route = frappe.get_route();
 		apply_cashier_desk_shell(route);
+		redirect_cashier_to_pos_home();
 		if (route_is_allowed(route)) {
 			return;
 		}

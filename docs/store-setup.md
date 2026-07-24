@@ -59,16 +59,29 @@ All use the block logo at `/assets/kqs_retail/images/kqs-receipt-logo.png`.
 
 1. **Retail → POS Profile** → open the store profile  
 2. Set **Print Format** to Classic, Columns, or Hybrid  
-3. Save → reload `/app/point-of-sale`  
-4. Complete a test sale → Print  
-5. In the browser print dialog: select the 80mm thermal, margins **None**, scale **100%**, no headers/footers  
+3. Under **KQS Receipt Contact**, set this branch’s address / phone / Facebook / website  
+4. Save → reload `/app/point-of-sale`  
+5. Complete a test sale → Print  
+6. In the browser print dialog: select the 80mm thermal, margins **None**, scale **100%**, no headers/footers  
+
+**Policy & tagline (all stores):** **KQS Retail Settings → Sale Receipt Footer**
+
+| Field | Purpose |
+|-------|---------|
+| Receipt Tagline | e.g. Finest footware (Classic / Hybrid) |
+| Receipt Policy Title | Bold heading on the slip |
+| Receipt Policy Text | Customer-facing exchange / return terms |
+
+Change policy there when rules change — do not edit Print Format HTML. Blank POS Profile contact fields fall back to **Company** phone / website.
 
 Switch formats anytime by changing the POS Profile field — no code change. Sales Invoice reprints use the matching `… (SI)` format when printing from Desk.
 
 Manual reinstall (if needed):
 
 ```bash
+bench --site YOUR_SITE execute kqs_retail.setup.pos_profile_fields.ensure_pos_profile_receipt_fields
 bench --site YOUR_SITE execute kqs_retail.setup.receipt_print_formats.ensure_receipt_print_formats
+bench --site YOUR_SITE migrate
 bench --site YOUR_SITE clear-cache
 ```
 
@@ -96,7 +109,7 @@ Or production: `bench --site YOUR_SITE execute kqs_retail.setup.seed_kqs_demo.sy
 
 To change the company-wide default list, edit `KQS_DEFAULT_POS_PAYMENT_MODES` in `kqs_retail/setup/pos_payments.py`.
 
-At checkout: tap a payment tile, enter the amount the customer gave on the numpad, then **Complete Order**. Amounts are never pre-filled (KQS disables ERPNext “Set Grand Total to Default Payment Method” on all POS profiles) so change is calculated from what the cashier actually enters.
+At checkout: tap a payment tile, enter the amount the customer gave on the numpad, then **Complete Order**. Amounts are never pre-filled (KQS disables ERPNext “Set Grand Total to Default Payment Method” on all POS profiles) so change is calculated from what the cashier actually enters and printed on the receipt (`change_amount`).
 
 ## Stock flow
 

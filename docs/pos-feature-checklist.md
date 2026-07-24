@@ -115,7 +115,7 @@ Policy reference: [layby-rules.md](layby-rules.md)
 | [x] | Sale receipt — print | *(KQS)* Three formats: Classic / Columns / Hybrid — set on POS Profile |
 | [ ] | Sale receipt — email | *(ERPNext)* After checkout |
 | [ ] | Reprint past receipt | *(ERPNext)* POS past orders |
-| [x] | Custom layout (logo, footer, terms) | *(KQS)* Thermal Jinja formats + block logo |
+| [x] | Custom layout (logo, footer, terms) | *(KQS)* Thermal formats; policy in KQS Retail Settings; address on POS Profile |
 | [ ] | Letter head / company logo | *(Configure)* Setup → Letter Head (not used on thermal formats) |
 | [x] | Thermal paper width (e.g. 80mm) | *(KQS)* 72mm printable CSS in receipt formats |
 | [ ] | Direct thermal print (QZ Tray, no preview) | *(ERPNext)* Optional |

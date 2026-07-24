@@ -12,16 +12,37 @@
 {{- _u or doc.owner or "" -}}
 {%- endmacro -%}
 
-{%- macro kqs_company_phone() -%}
-{{- frappe.db.get_value("Company", doc.company, "phone_no") or "27005084" -}}
-{%- endmacro -%}
-
-{%- macro kqs_company_website() -%}
-{{- frappe.db.get_value("Company", doc.company, "website") or "kbfootware.com" -}}
-{%- endmacro -%}
-
 {%- macro kqs_store_address() -%}
-{{- "Mafeteng, Old Matelile Taxi Rank" -}}
+{%- if doc.pos_profile -%}
+{{- frappe.db.get_value("POS Profile", doc.pos_profile, "kqs_receipt_address") or "" -}}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro kqs_receipt_phone() -%}
+{%- set _p = "" -%}
+{%- if doc.pos_profile -%}
+	{%- set _p = frappe.db.get_value("POS Profile", doc.pos_profile, "kqs_receipt_phone") or "" -%}
+{%- endif -%}
+{{- _p or frappe.db.get_value("Company", doc.company, "phone_no") or "" -}}
+{%- endmacro -%}
+
+{%- macro kqs_receipt_facebook() -%}
+{%- if doc.pos_profile -%}
+{{- frappe.db.get_value("POS Profile", doc.pos_profile, "kqs_receipt_facebook") or "" -}}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro kqs_receipt_website() -%}
+{%- set _w = "" -%}
+{%- if doc.pos_profile -%}
+	{%- set _w = frappe.db.get_value("POS Profile", doc.pos_profile, "kqs_receipt_website") or "" -%}
+{%- endif -%}
+{{- _w or frappe.db.get_value("Company", doc.company, "website") or "" -}}
+{%- endmacro -%}
+
+{%- macro kqs_tagline() -%}
+{%- set _t = frappe.db.get_single_value("KQS Retail Settings", "receipt_tagline") if frappe.db.exists("DocType", "KQS Retail Settings") else none -%}
+{{- _t or "Finest footware" -}}
 {%- endmacro -%}
 
 {%- macro kqs_item_detail(row) -%}
@@ -33,10 +54,26 @@
 {%- endmacro -%}
 
 {%- macro kqs_policy() -%}
-<div class="kqs-policy-title">Exchanges within 30 days</div>
-<div class="kqs-policy">
-	Receipt required. Exchange or store credit only — no cash refund.
-</div>
+{%- set _has = frappe.db.exists("DocType", "KQS Retail Settings") -%}
+{%- set title = (frappe.db.get_single_value("KQS Retail Settings", "receipt_policy_title") if _has else none) or "Exchanges within 30 days" -%}
+{%- set body = (frappe.db.get_single_value("KQS Retail Settings", "receipt_policy_text") if _has else none) or "Receipt required. Exchange or store credit only — no cash refund." -%}
+{%- if title -%}
+<div class="kqs-policy-title">{{ title }}</div>
+{%- endif -%}
+{%- if body -%}
+<div class="kqs-policy">{{ body }}</div>
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro kqs_contact_footer() -%}
+{%- set addr = kqs_store_address() -%}
+{%- set phone = kqs_receipt_phone() -%}
+{%- set fb = kqs_receipt_facebook() -%}
+{%- set web = kqs_receipt_website() -%}
+{%- if addr -%}<div class="kqs-footer-line">{{ addr }}</div>{%- endif -%}
+{%- if fb -%}<div class="kqs-footer-line">{{ fb }}</div>{%- endif -%}
+{%- if phone -%}<div class="kqs-footer-line">{{ phone }}</div>{%- endif -%}
+{%- if web -%}<div class="kqs-footer-line">{{ web }}</div>{%- endif -%}
 {%- endmacro -%}
 
 {%- macro kqs_payments_block() -%}

@@ -406,7 +406,7 @@ def _invoice_allocated_total(doc) -> float:
 
 
 def validate_pos_payment_totals_before_submit(doc, method=None) -> None:
-	"""Cashier must allocate the full sale across payment modes before submit."""
+	"""Cashier must cover the sale; cash/card overpayment is allowed as change."""
 	if doc.is_return or not doc.get("is_pos"):
 		return
 	if doc.doctype not in RETURN_CREDIT_DOCTYPES:
@@ -420,19 +420,11 @@ def validate_pos_payment_totals_before_submit(doc, method=None) -> None:
 	if allocated <= 0.009:
 		frappe.throw(_("Enter payment amounts before completing the order."))
 
-	diff = grand - allocated
-	if abs(diff) <= 0.02:
+	# Overpayment is tendered change (doc.change_amount) — do not block submit.
+	shortfall = grand - allocated
+	if shortfall <= 0.02:
 		return
 
-	if allocated > grand + 0.02:
-		frappe.throw(
-			_("Payments total {0} exceeds sale total {1}. Adjust the amounts entered.").format(
-				frappe.format(allocated, {"fieldtype": "Currency"}),
-				frappe.format(grand, {"fieldtype": "Currency"}),
-			)
-		)
-
-	shortfall = max(0.0, diff)
 	account = get_account_sale_payment_amount(doc)
 	if account <= 0.009:
 		frappe.throw(

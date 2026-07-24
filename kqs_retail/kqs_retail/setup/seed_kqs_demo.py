@@ -38,8 +38,11 @@ def seed():
 	_ensure_item_groups()
 	items = _ensure_sample_items()
 	_ensure_stock(items)
-	_ensure_pos_profiles(company)
 	_ensure_customer()
+	_ensure_pos_profiles(company)
+	from kqs_retail.setup.customer_defaults import ensure_pos_profile_walk_in_customer
+
+	ensure_pos_profile_walk_in_customer()
 	_ensure_roles()
 	_ensure_users()
 	_ensure_desk_pages()
@@ -56,7 +59,7 @@ def seed():
 	print("  Company:", company)
 	print("  Warehouses:", ", ".join(WAREHOUSES))
 	print("  Items:", ", ".join(items))
-	print("  POS: Store-01 POS, Store-02 POS")
+	print("  POS: Store-01 POS, Store-02 POS (default customer: Walk-in Customer)")
 	print("  Test POS at http://localhost:8080/app/point-of-sale")
 	print("  Cashier: cashier@kqs.local /", DEMO_PASSWORD)
 	print("  Manager: manager@kqs.local /", DEMO_PASSWORD)
@@ -527,23 +530,45 @@ def _ensure_pos_profiles(company):
 	]:
 		if frappe.db.exists("POS Profile", profile_name):
 			sync_pos_profile_payments(profile_name)
-			continue
-		doc = frappe.get_doc(
-			{
-				"doctype": "POS Profile",
-				"name": profile_name,
-				"company": company,
-				"warehouse": store_wh,
-				"currency": frappe.db.get_value("Company", company, "default_currency"),
-				"update_stock": 1,
-				"allow_print_before_pay": 1,
-				"set_grand_total_to_default_mop": 0,
-				"write_off_account": write_off_account,
-				"write_off_cost_center": cost_center,
-				"payments": payment_rows,
-			}
-		)
-		doc.insert(ignore_permissions=True)
+		else:
+			doc = frappe.get_doc(
+				{
+					"doctype": "POS Profile",
+					"name": profile_name,
+					"company": company,
+					"warehouse": store_wh,
+					"customer": "Walk-in Customer",
+					"currency": frappe.db.get_value("Company", company, "default_currency"),
+					"update_stock": 1,
+					"allow_print_before_pay": 1,
+					"set_grand_total_to_default_mop": 0,
+					"write_off_account": write_off_account,
+					"write_off_cost_center": cost_center,
+					"payments": payment_rows,
+				}
+			)
+			doc.insert(ignore_permissions=True)
+		_ensure_pos_profile_receipt_contact(profile_name)
+
+
+def _ensure_pos_profile_receipt_contact(profile_name: str) -> None:
+	"""Demo defaults for thermal receipt footer (per till)."""
+	if not frappe.db.exists("Custom Field", "POS Profile-kqs_receipt_address"):
+		return
+	doc = frappe.get_doc("POS Profile", profile_name)
+	changed = False
+	defaults = {
+		"kqs_receipt_address": "Mafeteng, Old Matelile Taxi Rank",
+		"kqs_receipt_phone": "27005084",
+		"kqs_receipt_facebook": "KQS Footware",
+		"kqs_receipt_website": "kbfootware.com",
+	}
+	for field, value in defaults.items():
+		if not doc.get(field):
+			doc.set(field, value)
+			changed = True
+	if changed:
+		doc.save(ignore_permissions=True)
 
 
 def _ensure_customer():

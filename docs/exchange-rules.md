@@ -113,8 +113,10 @@ Managers with **KQS Store Manager**, **Sales Manager**, or **System Manager** ca
 
 | Item | Where to configure |
 |------|-------------------|
-| Footer text (“Exchanges within 30 days with receipt…”) | Setup → **Print Format** on Sales Invoice / POS |
-| Internal policy notes | **KQS Retail Settings** → Returns & Store Credit (days) and Notes |
+| Printed exchange / return terms | **KQS Retail Settings → Sale Receipt Footer** (title + text) |
+| Branch address / phone / FB / web on slip | **POS Profile → KQS Receipt Contact** (per till) |
+| Internal policy notes | **KQS Retail Settings → Notes** |
+| Return window (system enforcement) | **KQS Retail Settings → Return Acceptance (Days)** |
 | This document | `docs/exchange-rules.md` — source of truth for training |
 
 ---
