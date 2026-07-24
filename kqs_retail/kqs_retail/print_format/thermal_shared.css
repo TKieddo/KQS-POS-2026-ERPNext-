@@ -1,0 +1,224 @@
+/* KQS 80mm thermal receipts — high contrast, bold type */
+@page {
+	size: 80mm auto;
+	margin: 0;
+}
+
+.kqs-rcpt {
+	width: 72mm;
+	max-width: 72mm;
+	margin: 0 auto;
+	padding: 2mm 2mm 5mm;
+	color: #000;
+	background: #fff;
+	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
+	font-size: 11pt;
+	font-weight: 700;
+	line-height: 1.3;
+	-webkit-print-color-adjust: exact;
+	print-color-adjust: exact;
+}
+
+.kqs-rcpt * {
+	box-sizing: border-box;
+	color: #000;
+}
+
+.kqs-logo {
+	display: block;
+	width: 100%;
+	height: auto;
+	margin: 0 0 2mm;
+}
+
+.kqs-center {
+	text-align: center;
+}
+
+.kqs-store-name {
+	font-size: 13pt;
+	font-weight: 800;
+	margin: 0 0 1mm;
+}
+
+.kqs-muted-line {
+	font-size: 9pt;
+	font-weight: 600;
+	margin: 0;
+}
+
+.kqs-rule {
+	border: 0;
+	border-top: 1.5px dashed #000;
+	margin: 2.5mm 0;
+}
+
+.kqs-rule-solid {
+	border: 0;
+	border-top: 2px solid #000;
+	margin: 2mm 0;
+}
+
+.kqs-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 2mm;
+	margin: 0.8mm 0;
+}
+
+.kqs-meta {
+	display: flex;
+	justify-content: space-between;
+	gap: 3mm;
+	font-size: 10pt;
+	margin: 1mm 0 2mm;
+}
+
+.kqs-meta .col {
+	flex: 1;
+}
+
+.kqs-meta .col.right {
+	text-align: right;
+}
+
+.kqs-total-big {
+	font-size: 16pt;
+	font-weight: 900;
+	margin: 2mm 0;
+}
+
+.kqs-total-big .label {
+	font-size: 12pt;
+	font-weight: 800;
+}
+
+.kqs-bar {
+	background: #000 !important;
+	color: #fff !important;
+	padding: 1.8mm 2mm;
+	font-weight: 800;
+	font-size: 11pt;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin: 2mm 0 1mm;
+	-webkit-print-color-adjust: exact;
+	print-color-adjust: exact;
+}
+
+.kqs-bar span {
+	color: #fff !important;
+}
+
+.kqs-item {
+	margin: 2mm 0;
+}
+
+.kqs-item-name {
+	font-size: 11pt;
+	font-weight: 800;
+}
+
+.kqs-item-sub {
+	font-size: 9pt;
+	font-weight: 600;
+	margin-top: 0.4mm;
+	padding-left: 2mm;
+}
+
+.kqs-cols-head,
+.kqs-cols-row {
+	display: grid;
+	grid-template-columns: 6mm 1fr 10mm 18mm;
+	gap: 1mm;
+	align-items: start;
+	font-size: 10pt;
+}
+
+.kqs-cols-head {
+	font-weight: 800;
+	border-bottom: 1.5px solid #000;
+	padding-bottom: 1mm;
+	margin-bottom: 1.5mm;
+}
+
+.kqs-cols-row {
+	margin: 1.5mm 0;
+}
+
+.kqs-cols-row .qty,
+.kqs-cols-row .price,
+.kqs-cols-head .qty,
+.kqs-cols-head .price {
+	text-align: right;
+}
+
+.kqs-cols-row .num,
+.kqs-cols-head .num {
+	text-align: left;
+}
+
+.kqs-mono {
+	font-family: "Courier New", Courier, monospace;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+.kqs-totals .kqs-row {
+	font-size: 11pt;
+}
+
+.kqs-grand {
+	font-size: 15pt;
+	font-weight: 900;
+	margin-top: 1.5mm;
+}
+
+.kqs-script {
+	font-family: Georgia, "Times New Roman", serif;
+	font-style: italic;
+	font-weight: 700;
+	font-size: 13pt;
+	text-align: center;
+	margin: 3mm 0 2mm;
+}
+
+.kqs-policy-title {
+	font-size: 11pt;
+	font-weight: 900;
+	text-align: center;
+	text-transform: uppercase;
+	margin: 2mm 0 1mm;
+}
+
+.kqs-policy {
+	font-size: 8.5pt;
+	font-weight: 600;
+	text-align: center;
+	margin: 0 0 2mm;
+	line-height: 1.35;
+}
+
+.kqs-thanks {
+	text-align: center;
+	font-size: 10pt;
+	font-weight: 800;
+	text-transform: uppercase;
+	margin: 1mm 0;
+}
+
+.kqs-footer-line {
+	font-size: 9pt;
+	font-weight: 700;
+	margin: 1mm 0;
+}
+
+.kqs-cashier {
+	font-size: 11pt;
+	font-weight: 800;
+	text-align: center;
+	text-transform: uppercase;
+	margin: 2mm 0;
+}

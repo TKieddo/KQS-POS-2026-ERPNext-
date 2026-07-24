@@ -112,12 +112,12 @@ Policy reference: [layby-rules.md](layby-rules.md)
 
 | Done | Feature | Notes |
 |:----:|---------|-------|
-| [ ] | Sale receipt — print | *(Configure)* Print Format + POS Profile |
+| [x] | Sale receipt — print | *(KQS)* Three formats: Classic / Columns / Hybrid — set on POS Profile |
 | [ ] | Sale receipt — email | *(ERPNext)* After checkout |
 | [ ] | Reprint past receipt | *(ERPNext)* POS past orders |
-| [ ] | Custom layout (logo, footer, terms) | *(Configure)* Print Format Builder |
-| [ ] | Letter head / company logo | *(Configure)* Setup → Letter Head |
-| [ ] | Thermal paper width (e.g. 80mm) | *(Configure)* Print Style |
+| [x] | Custom layout (logo, footer, terms) | *(KQS)* Thermal Jinja formats + block logo |
+| [ ] | Letter head / company logo | *(Configure)* Setup → Letter Head (not used on thermal formats) |
+| [x] | Thermal paper width (e.g. 80mm) | *(KQS)* 72mm printable CSS in receipt formats |
 | [ ] | Direct thermal print (QZ Tray, no preview) | *(ERPNext)* Optional |
 | [ ] | Cash drawer open on sale | *(ERPNext)* Optional via QZ / printer |
 | [ ] | Layby — customer receipt | *(Configure)* Format + KQS Retail Settings |
@@ -125,8 +125,7 @@ Policy reference: [layby-rules.md](layby-rules.md)
 | [ ] | Layby — completion receipt | *(Configure)* Sales Invoice format + Settings |
 | [ ] | Auto-print layby receipts at till | *(KQS)* After create / pay / complete |
 
-**Where to configure:** Setup → Print Format · KQS Retail Settings → Layby Receipts · Retail → POS Profile
-
+**Where to configure:** Retail → POS Profile (sale receipt) · Setup → Print Format · KQS Retail Settings → Layby Receipts · see [store-setup.md](store-setup.md#thermal-sale-receipts-80mm)
 ---
 
 ## 6. Inventory & catalog (manager)
@@ -200,7 +199,7 @@ Setup reference: [store-setup.md](store-setup.md)
 | Done | Feature | Notes |
 |:----:|---------|-------|
 | [ ] | Tablet or PC browser till tested | Bookmark `/app/point-of-sale` |
-| [ ] | Receipt printer tested on real paper | Allow pop-ups if print tab blocked |
+| [ ] | Receipt printer tested on real paper | Try Classic / Columns / Hybrid on POS Profile; allow pop-ups if blocked |
 | [ ] | Barcode scanner tested | USB scanner + barcodes on items |
 | [ ] | Store Wi-Fi stable for tablets | See [deployment.md](deployment.md) |
 | [ ] | Production server + daily backups | `bench --site all backup --with-files` |

@@ -1,0 +1,79 @@
+{# KQS Receipt Classic — matches clear KQS thermal slip #}
+<div class="kqs-rcpt">
+	{{ kqs_logo() }}
+
+	<div class="kqs-center kqs-muted-line">
+		DATE: {{ doc.get_formatted("posting_date") }}
+		{%- if doc.posting_time %} {{ doc.get_formatted("posting_time") }}{%- endif %}
+	</div>
+
+	<div class="kqs-total-big kqs-center">
+		<span class="label">Total:</span> {{ kqs_money(doc.grand_total) }}
+	</div>
+
+	<div class="kqs-bar">
+		<span>Description</span>
+		<span>Total</span>
+	</div>
+
+	{%- for row in doc.items -%}
+	<div class="kqs-item">
+		<div class="kqs-row">
+			<span class="kqs-item-name">{{ row.item_name or row.item_code }}</span>
+			<span>{{ kqs_money(row.amount) }}</span>
+		</div>
+		{%- set detail = kqs_item_detail(row) -%}
+		{%- if detail -%}
+		<div class="kqs-item-sub">{{ detail }}</div>
+		{%- endif -%}
+		{%- if row.qty and row.qty != 1 -%}
+		<div class="kqs-item-sub">Qty: {{ row.qty }} × {{ kqs_money(row.rate) }}</div>
+		{%- endif -%}
+	</div>
+	{%- endfor -%}
+
+	{%- if doc.discount_amount -%}
+	<div class="kqs-row">
+		<span>Discount</span>
+		<span>- {{ kqs_money(doc.discount_amount) }}</span>
+	</div>
+	{%- endif -%}
+
+	{%- if doc.payments -%}
+		{%- for p in doc.payments -%}
+			{%- if p.amount -%}
+			<div class="kqs-row">
+				<span>{{ p.mode_of_payment }}</span>
+				<span>{{ kqs_money(p.amount) }}</span>
+			</div>
+			{%- endif -%}
+		{%- endfor -%}
+	{%- elif doc.paid_amount -%}
+	<div class="kqs-row">
+		<span>Paid</span>
+		<span>{{ kqs_money(doc.paid_amount) }}</span>
+	</div>
+	{%- endif -%}
+
+	<div class="kqs-bar">
+		<span>Change</span>
+		<span>{{ kqs_money(doc.change_amount or 0) }}</span>
+	</div>
+
+	<div class="kqs-script">Finest footware</div>
+
+	<div class="kqs-cashier">Cashier: {{ kqs_cashier_name() }}</div>
+
+	{{ kqs_policy() }}
+
+	<hr class="kqs-rule" />
+	<div class="kqs-thanks">Thank You for shopping with us</div>
+	<hr class="kqs-rule" />
+
+	<div class="kqs-footer-line">{{ kqs_store_address() }}</div>
+	<div class="kqs-footer-line">KQS Footware</div>
+	<div class="kqs-footer-line">{{ kqs_company_phone() }}</div>
+	<div class="kqs-footer-line">{{ kqs_company_website() }}</div>
+
+	<div class="kqs-center kqs-muted-line" style="margin-top: 2mm;">{{ doc.name }}</div>
+</div>

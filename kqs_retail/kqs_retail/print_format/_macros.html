@@ -1,0 +1,64 @@
+{# Shared helpers for KQS thermal receipts — prepended by setup #}
+{%- macro kqs_money(amount) -%}
+{{- frappe.utils.fmt_money(amount or 0, currency=doc.currency) -}}
+{%- endmacro -%}
+
+{%- macro kqs_logo() -%}
+<img class="kqs-logo" src="/assets/kqs_retail/images/kqs-receipt-logo.png" alt="KQS" />
+{%- endmacro -%}
+
+{%- macro kqs_cashier_name() -%}
+{%- set _u = frappe.db.get_value("User", doc.owner, "full_name") -%}
+{{- _u or doc.owner or "" -}}
+{%- endmacro -%}
+
+{%- macro kqs_company_phone() -%}
+{{- frappe.db.get_value("Company", doc.company, "phone_no") or "27005084" -}}
+{%- endmacro -%}
+
+{%- macro kqs_company_website() -%}
+{{- frappe.db.get_value("Company", doc.company, "website") or "kbfootware.com" -}}
+{%- endmacro -%}
+
+{%- macro kqs_store_address() -%}
+{{- "Mafeteng, Old Matelile Taxi Rank" -}}
+{%- endmacro -%}
+
+{%- macro kqs_item_detail(row) -%}
+{%- if row.description and row.description != row.item_name -%}
+{{- row.description -}}
+{%- elif row.item_code and row.item_code != row.item_name -%}
+{{- row.item_code -}}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro kqs_policy() -%}
+<div class="kqs-policy-title">Exchanges within 30 days</div>
+<div class="kqs-policy">
+	Receipt required. Exchange or store credit only — no cash refund.
+</div>
+{%- endmacro -%}
+
+{%- macro kqs_payments_block() -%}
+{%- if doc.payments -%}
+	{%- for p in doc.payments -%}
+		{%- if p.amount -%}
+		<div class="kqs-row">
+			<span>{{ p.mode_of_payment }}</span>
+			<span>{{ kqs_money(p.amount) }}</span>
+		</div>
+		{%- endif -%}
+	{%- endfor -%}
+{%- elif doc.paid_amount -%}
+	<div class="kqs-row">
+		<span>Paid</span>
+		<span>{{ kqs_money(doc.paid_amount) }}</span>
+	</div>
+{%- endif -%}
+{%- if doc.change_amount -%}
+	<div class="kqs-row">
+		<span>Change</span>
+		<span>{{ kqs_money(doc.change_amount) }}</span>
+	</div>
+{%- endif -%}
+{%- endmacro -%}

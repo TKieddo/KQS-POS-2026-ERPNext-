@@ -43,6 +43,35 @@ Create in ERPNext: **Retail → POS Profile → New**
 
 Enable: **Update Stock**, **Allow Print Before Pay** (optional)
 
+### Thermal sale receipts (80mm)
+
+After `bench migrate`, KQS installs three custom Print Formats (plus Sales Invoice copies for reprints):
+
+| Print Format | Look |
+|--------------|------|
+| **KQS Receipt Classic** | Clear KQS slip: logo, large Total, shaded bars, Finest footware, policy + contact footer |
+| **KQS Receipt Columns** | ISH-style: dashed rules, mono columns (# / Item / Qty / Price), bold Total |
+| **KQS Receipt Hybrid** | Classic branding + column item rows |
+
+All use the block logo at `/assets/kqs_retail/images/kqs-receipt-logo.png`.
+
+**Choose one on the till:**
+
+1. **Retail → POS Profile** → open the store profile  
+2. Set **Print Format** to Classic, Columns, or Hybrid  
+3. Save → reload `/app/point-of-sale`  
+4. Complete a test sale → Print  
+5. In the browser print dialog: select the 80mm thermal, margins **None**, scale **100%**, no headers/footers  
+
+Switch formats anytime by changing the POS Profile field — no code change. Sales Invoice reprints use the matching `… (SI)` format when printing from Desk.
+
+Manual reinstall (if needed):
+
+```bash
+bench --site YOUR_SITE execute kqs_retail.setup.receipt_print_formats.ensure_receipt_print_formats
+bench --site YOUR_SITE clear-cache
+```
+
 ### Payment methods (Cash, Bank, Mpesa, Eco-Cash, etc.)
 
 KQS automatically adds these defaults to **every POS Profile** when they exist in ERPNext:
