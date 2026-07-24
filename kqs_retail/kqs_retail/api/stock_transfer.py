@@ -13,6 +13,7 @@ from kqs_retail.utils.items import (
 	resolve_template_code,
 	variant_item_name,
 )
+from kqs_retail.utils.manager_access import assert_stock_manager
 from kqs_retail.utils.warehouses import (
 	get_kqs_central_warehouse,
 	get_kqs_warehouse_names,
@@ -67,6 +68,7 @@ def assign_stock_to_branch(
 	company: str = "",
 ):
 	"""Material transfer from one warehouse to another (Central, store, or branch)."""
+	assert_stock_manager()
 	lines = json.loads(items) if isinstance(items, str) else items
 	if not lines:
 		frappe.throw(_("Add at least one item with quantity."))
@@ -88,9 +90,18 @@ def assign_stock_to_branch(
 		qty = flt(line.get("qty"))
 		if qty <= 0:
 			continue
+		item_code = line["item_code"]
+		ensure_variant_not_orphaned(item_code)
+		available = _available_qty(item_code, source)
+		if qty > available:
+			frappe.throw(
+				_("Cannot transfer {0}: only {1} sellable at {2} (requested {3}).").format(
+					item_code, available, source, qty
+				)
+			)
 		stock_items.append(
 			{
-				"item_code": line["item_code"],
+				"item_code": item_code,
 				"qty": qty,
 				"s_warehouse": source,
 				"t_warehouse": target_warehouse,
@@ -99,9 +110,6 @@ def assign_stock_to_branch(
 
 	if not stock_items:
 		frappe.throw(_("Enter quantity for at least one item."))
-
-	for line in stock_items:
-		ensure_variant_not_orphaned(line["item_code"])
 
 	se = frappe.get_doc(
 		{
@@ -343,11 +351,12 @@ def search_product_variants(query: str = "", limit: int = 20):
 
 
 def _available_qty(item_code: str, warehouse: str) -> float:
+	"""Sellable qty at warehouse (on-hand minus active layby reservations)."""
 	if not warehouse:
 		return 0.0
-	from erpnext.stock.utils import get_stock_balance
+	from kqs_retail.kqs_layby.stock_reservation import get_sellable_qty
 
-	return flt(get_stock_balance(item_code, warehouse))
+	return flt(get_sellable_qty(item_code, warehouse))
 
 
 def _default_central_warehouse(company: str) -> str:

@@ -68,6 +68,32 @@ bench --site YOUR_SITE execute kqs_retail.setup.seed_kqs_demo.seed
 3. TLS via Caddy or Nginx + Let's Encrypt
 4. Store tablets bookmark `https://erp.yourdomain.com/app/point-of-sale`
 
+### Updating KQS code on Hostinger VPS (see changes live)
+
+Editing files only on your Windows PC does **not** update Hostinger. Push to GitHub, then pull on the VPS.
+
+```bash
+# SSH into the VPS, then (paths vary — use your bench / app location):
+cd /path/to/frappe-bench
+
+# If kqs_retail was installed via get-app from GitHub:
+cd apps/kqs_retail
+git pull origin main   # or your branch
+cd ../..
+
+bench --site YOUR_SITE migrate
+bench build --app kqs_retail
+bench --site YOUR_SITE clear-cache
+# optional if workers stick to old code:
+bench restart
+```
+
+Then hard-refresh the browser (`Ctrl+Shift+R`).
+
+**Never** edit ERPNext core on the VPS. All KQS changes belong in `apps/kqs_retail` only.
+
+If the app is a monorepo subdirectory (this repo), pull the monorepo on the VPS and ensure `apps/kqs_retail` is that folder (symlink or `bench get-app` from the same GitHub repo).
+
 ## Tablet testing checklist
 
 - [ ] Login as a real cashier user from store Wi-Fi → lands on POS

@@ -171,6 +171,26 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Edit Product",
+   "link_count": 0,
+   "link_to": "edit-product",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Receive Stock",
+   "link_count": 0,
+   "link_to": "receive-stock",
+   "link_type": "Page",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Assign to Branch",
    "link_count": 0,
    "link_to": "assign-to-branch",
@@ -258,6 +278,24 @@
    "icon": "add",
    "label": "Add Product",
    "link_to": "quick-add-product",
+   "type": "Page"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "format": "",
+   "icon": "edit",
+   "label": "Edit Product",
+   "link_to": "edit-product",
+   "type": "Page"
+  },
+  {
+   "color": "Cyan",
+   "doc_view": "",
+   "format": "",
+   "icon": "stock",
+   "label": "Receive Stock",
+   "link_to": "receive-stock",
    "type": "Page"
   },
   {

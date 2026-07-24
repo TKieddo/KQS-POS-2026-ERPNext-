@@ -1,7 +1,7 @@
 /* Copyright (c) 2026, KQS — Keep KQS Cashier on Point of Sale, not full Desk. */
 (function () {
 	const POS_PAGE_KEY = "_page:point-of-sale";
-	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 35";
+	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 45";
 
 	function bust_stale_pos_page_cache() {
 		try {
@@ -45,13 +45,93 @@
 		};
 	}
 
-	function kqs_open_pos_closing() {
-		const pos = window.cur_pos;
-		if (pos && typeof pos.close_pos === "function") {
-			pos.close_pos();
+	function kqs_prepare_and_open_closing(pos_opening_entry) {
+		if (!pos_opening_entry) {
+			frappe.msgprint(
+				__(
+					"No open POS session found. As a manager: Selling → POS Opening Entry → open the Open row → Close Session."
+				)
+			);
 			return;
 		}
-		frappe.set_route("point-of-sale");
+		frappe.call({
+			method: "kqs_retail.api.pos_closing.prepare_closing_entry",
+			args: { pos_opening_entry },
+			freeze: true,
+			freeze_message: __("Preparing POS closing..."),
+			callback(r) {
+				if (r.exc || !r.message?.name) {
+					return;
+				}
+				frappe.set_route("Form", "POS Closing Entry", r.message.name);
+			},
+		});
+	}
+
+	function kqs_pick_open_session_then_close(sessions) {
+		if (!sessions?.length) {
+			kqs_prepare_and_open_closing(null);
+			return;
+		}
+		if (sessions.length === 1) {
+			kqs_prepare_and_open_closing(sessions[0].name);
+			return;
+		}
+		const options = sessions.map((row) => ({
+			label: `${row.name} — ${row.user} (${row.pos_profile || ""})`,
+			value: row.name,
+		}));
+		const d = new frappe.ui.Dialog({
+			title: __("Close open POS session"),
+			fields: [
+				{
+					fieldtype: "Select",
+					fieldname: "pos_opening_entry",
+					label: __("Open session"),
+					options: options.map((o) => o.value).join("\n"),
+					reqd: 1,
+					default: options[0].value,
+				},
+				{
+					fieldtype: "HTML",
+					options: `<p class="text-muted small">${__(
+						"Managers can close any open till. Pick the session to close."
+					)}</p>`,
+				},
+			],
+			primary_action_label: __("Close selected"),
+			primary_action(values) {
+				d.hide();
+				kqs_prepare_and_open_closing(values.pos_opening_entry);
+			},
+		});
+		// Show user labels in the select (Frappe Select uses values; improve via HTML list)
+		const $sel = d.fields_dict.pos_opening_entry.$input;
+		$sel.empty();
+		options.forEach((o) => {
+			$sel.append(`<option value="${frappe.utils.escape_html(o.value)}">${frappe.utils.escape_html(
+				o.label
+			)}</option>`);
+		});
+		d.show();
+	}
+
+	function kqs_open_pos_closing() {
+		// Do not call ERPNext close_pos() here — it no-ops when the POS cart is hidden
+		// (common after the outdated-opening dialog), which left cashiers on a blank screen.
+		const from_pos = window.cur_pos?.pos_opening;
+		if (from_pos) {
+			kqs_prepare_and_open_closing(from_pos);
+			return;
+		}
+		frappe.call({
+			method: "kqs_retail.api.pos_closing.list_open_pos_sessions",
+			args: { limit: 20 },
+			callback(r) {
+				if (r.exc) return;
+				kqs_pick_open_session_then_close(r.message || []);
+			},
+		});
 	}
 
 	function kqs_show_outdated_opening_dialog() {
@@ -60,28 +140,18 @@
 		}
 		window._kqs_outdated_dialog_open = true;
 
-		const d = new frappe.ui.Dialog({
-			title: __("Outdated POS Opening Entry"),
-			size: "small",
-			fields: [
-				{
-					fieldtype: "HTML",
-					fieldname: "message",
-					options: `<p style="margin:0">${__(
-						"This register was opened on a previous day. Close it to start a fresh session."
-					)}</p>`,
-				},
-			],
-			primary_action_label: __("Close the POS"),
-			primary_action() {
-				d.hide();
-				kqs_open_pos_closing();
+		// Do not show the English ERPNext error modal — route cashiers straight to closing.
+		frappe.show_alert(
+			{
+				message: __("Till was opened on a previous day — closing now."),
+				indicator: "orange",
 			},
-		});
-		d.onhide = () => {
+			6
+		);
+		kqs_open_pos_closing();
+		setTimeout(() => {
 			window._kqs_outdated_dialog_open = false;
-		};
-		d.show();
+		}, 4000);
 	}
 
 	install_outdated_opening_intercept();

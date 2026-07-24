@@ -133,18 +133,20 @@ Policy reference: [layby-rules.md](layby-rules.md)
 
 | Done | Feature | Notes |
 |:----:|---------|-------|
-| [ ] | Add product with variants | *(KQS)* `/app/quick-add-product` |
-| [ ] | Product categories (Women, Men, Kids, etc.) | *(KQS)* Item Group seed + pills on Add Product |
-| [ ] | Product images | *(KQS)* Add Product |
-| [ ] | Set and update prices | *(KQS)* Add Product |
-| [ ] | Opening stock on new product | *(KQS)* Add Product |
-| [ ] | Transfer stock between branches | *(KQS)* `/app/assign-to-branch` |
-| [ ] | Central warehouse → store transfer | *(KQS)* Assign to Branch |
-| [ ] | Receive goods from supplier | *(ERPNext)* Purchase Receipt |
+| [x] | Add product with variants | *(KQS)* `/app/quick-add-product` |
+| [x] | Edit product / add variants | *(KQS)* `/app/edit-product` |
+| [x] | Product categories (Women, Men, Kids, etc.) | *(KQS)* Item Group seed + pills on Add/Edit Product |
+| [x] | Product images | *(KQS)* Add / Edit Product |
+| [x] | Set and update prices | *(KQS)* Add Product + Edit Product (`standard_rate`) |
+| [x] | Opening stock on new product | *(KQS)* Add Product |
+| [x] | Receive stock for existing SKUs | *(KQS)* `/app/receive-stock` → Material Receipt (default Central) |
+| [x] | Transfer stock between branches | *(KQS)* `/app/assign-to-branch` (sellable qty) |
+| [x] | Central warehouse → store transfer | *(KQS)* Assign to Branch |
+| [ ] | Receive goods from supplier (PO) | *(ERPNext)* Purchase Receipt — optional; KQS Receive Stock covers daily inbound |
 | [ ] | Stock adjustment / write-off | *(ERPNext)* Stock Reconciliation |
 | [ ] | Stock count / cycle count | *(ERPNext)* Stock Reconciliation |
-| [ ] | Delete or disable products | *(KQS)* Item list (manager) |
-| [ ] | Low stock alerts | Not built |
+| [x] | Delete or disable products | *(KQS)* Item list + Edit Product disable |
+| [ ] | Low stock alerts | Out of scope |
 
 Setup reference: [store-setup.md](store-setup.md)
 
@@ -168,7 +170,7 @@ Setup reference: [store-setup.md](store-setup.md)
 | Done | Feature | Notes |
 |:----:|---------|-------|
 | [x] | Cashier role — POS only | *(KQS)* `KQS Cashier` — see [cashier-permissions.md](cashier-permissions.md) |
-| [ ] | Manager role — catalog and stock | *(KQS)* `KQS Store Manager` |
+| [x] | Manager role — catalog and stock | *(KQS)* `KQS Store Manager` — Add/Edit Product, Receive Stock, Assign to Branch |
 | [ ] | HQ / admin full access | *(ERPNext)* System Manager |
 | [ ] | Permissions for refund and discount | *(ERPNext)* Tune per role |
 | [ ] | Manager PIN at till | Planned v2 |

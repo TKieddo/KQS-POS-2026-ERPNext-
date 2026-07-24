@@ -13,15 +13,24 @@ Map each physical store to an ERPNext **Warehouse** and **POS Profile**.
 
 ## Warehouses
 
-| Store | Warehouse name | Parent | Purpose |
-|-------|----------------|--------|---------|
-| Central | `Central - KQS` | — | Goods in, allocation hub |
-| Store 1 | `Store-01 - KQS` | Central | Retail floor stock |
-| Store 2 | `Store-02 - KQS` | Central | Retail floor stock |
-
 Create in ERPNext: **Stock → Warehouse → New**
 
-Branches are ERPNext warehouses — KQS UI discovers them automatically from **Stock → Warehouse** (children of **Central**, or any warehouse linked to a **POS Profile**).
+| Store | **Warehouse Name** field | **Is Group** | Purpose |
+|-------|--------------------------|--------------|---------|
+| Central hub | `Central` | **No** | Opening stock from Add Product; transfer source |
+| Store 1 | `Store-01` (or your store name) | **No** | Retail floor stock + POS |
+| Store 2 | `Store-02` | **No** | Retail floor stock + POS |
+
+ERPNext shows the full name as e.g. `Central - KQS` — that is automatic from company abbr.
+
+**Do not set Parent Warehouse in the UI.** ERPNext only allows *group* warehouses as parents, but group warehouses cannot hold stock. Central must hold stock, so it cannot be a parent — the parent field will clear when you save. The demo seed used the API, not the Desk form; that was misleading in older docs.
+
+KQS discovers branches from:
+
+1. **Any leaf warehouse** for your company (except Central and ERPNext defaults like Finished Goods), and/or
+2. **POS Profiles** linked to a store warehouse (recommended — create POS before using Assign to Branch)
+
+**Disable** unused ERPNext demo warehouses (Finished Goods, Stores, etc.) so they do not clutter lists: open each → check **Disabled**.
 
 ## POS Profiles
 
@@ -63,19 +72,22 @@ At checkout: tap a payment tile, enter the amount the customer gave on the numpa
 ## Stock flow
 
 ```
-Supplier → Purchase Receipt → Central warehouse
-Central → Stock Entry (Material Transfer) → Store-01 / Store-02
-         or KQS Assign to Branch page
+Supplier / inbound → Receive Stock (Material Receipt) → Central (or store) warehouse
+Central → Assign to Branch (Material Transfer) → Store-01 / Store-02
 Store → POS Sale → stock reduced at store warehouse
 Layby Active → qty held via Layby Agreement (sellable = on-hand − active layby lines)
 ```
 
+Supplier **Purchase Receipt** remains available in ERPNext for formal PO receiving; daily “more stock arrived” for existing SKUs uses **Receive Stock**.
+
 ## Manager catalog flow (daily use)
 
-1. **Add Product** (`/app/quick-add-product`) — name, category pills (Women | Men, Accessories below), size/color variants, prices
-2. **Assign to Branch** (`/app/assign-to-branch`) — transfer stock between warehouses (Central ↔ store, or store ↔ store); pick product, set qty per variant if applicable
+1. **Add Product** (`/app/quick-add-product`) — name, category pills, size/color variants, prices, optional opening qty
+2. **Edit Product** (`/app/edit-product`) — update name/categories/prices; add new size/colour variants without deleting
+3. **Receive Stock** (`/app/receive-stock`) — inbound qty for existing SKUs (default warehouse **Central**)
+4. **Assign to Branch** (`/app/assign-to-branch`) — transfer sellable stock between warehouses (Central ↔ store, or store ↔ store)
 
-Use **Stock → Item** only for admin edge cases.
+Use **Stock → Item** only for admin edge cases. Stock take / cycle count: ERPNext **Stock Reconciliation**.
 
 ## Product categories (Item Group)
 
@@ -143,7 +155,7 @@ docker compose -f docker/compose.dev.yml exec backend \
   bench --site frontend execute kqs_retail.setup.seed_kqs_demo.seed
 ```
 
-**Add Product** opening qty and **Assign to Branch** only use these warehouses. Other ERPNext warehouses are hidden/disabled, not deleted (safer for demo data).
+**Add Product** opening qty, **Receive Stock**, and **Assign to Branch** only use these warehouses. Other ERPNext warehouses are hidden/disabled, not deleted (safer for demo data).
 
 ## Automated setup
 
@@ -171,7 +183,7 @@ scripts\run-smoke-test.bat
 | Role | Login | Password | Access |
 |------|-------|----------|--------|
 | Cashier | `cashier@kqs.local` | `kqs123` | POS only — `/app/point-of-sale` (see [cashier-permissions.md](cashier-permissions.md)) |
-| Store manager | `manager@kqs.local` | `kqs123` | KQS Retail workspace, Add Product, Assign to Branch |
+| Store manager | `manager@kqs.local` | `kqs123` | KQS Retail workspace, Add/Edit Product, Receive Stock, Assign to Branch |
 | HQ admin | `Administrator` | (setup) | Full Desk — not for tills |
 
 **Use `cashier@kqs.local` on tablets, never Administrator.**

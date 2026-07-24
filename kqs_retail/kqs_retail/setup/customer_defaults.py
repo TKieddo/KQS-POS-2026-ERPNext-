@@ -29,3 +29,22 @@ def ensure_customer_defaults() -> None:
 		).insert(ignore_permissions=True)
 
 	frappe.clear_cache(doctype="Customer")
+	ensure_pos_profile_walk_in_customer()
+
+
+def resolve_walk_in_customer() -> str | None:
+	"""ERPNext / KQS Walk-in customer name for POS Profile default."""
+	if frappe.db.exists("Customer", "Walk-in Customer"):
+		return "Walk-in Customer"
+	return frappe.db.get_value("Customer", {"customer_name": ["like", "%Walk-in%"]}, "name")
+
+
+def ensure_pos_profile_walk_in_customer() -> None:
+	"""Set POS Profile default customer to Walk-in when unset (cashiers skip picking)."""
+	walk_in = resolve_walk_in_customer()
+	if not walk_in:
+		return
+	for name in frappe.get_all("POS Profile", pluck="name"):
+		if frappe.db.get_value("POS Profile", name, "customer"):
+			continue
+		frappe.db.set_value("POS Profile", name, "customer", walk_in, update_modified=False)

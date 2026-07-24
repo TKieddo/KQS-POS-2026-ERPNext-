@@ -1,5 +1,5 @@
 /* Copyright (c) 2026, KQS â€” Layby, returns & checkout flow for ERPNext Point of Sale */
-const KQS_POS_PAGE_SCRIPT_VERSION = 43;
+const KQS_POS_PAGE_SCRIPT_VERSION = 45;
 
 frappe.provide("kqs_retail.pos_returns");
 
@@ -7698,10 +7698,23 @@ frappe.provide("kqs_retail.point_of_sale");
 			}
 		};
 
+		const orig_make_customer_selector = ItemCart.prototype.make_customer_selector;
+		ItemCart.prototype.make_customer_selector = function () {
+			orig_make_customer_selector.call(this);
+			pin_add_customer_control(this);
+		};
+
+		const orig_reset_customer_selector = ItemCart.prototype.reset_customer_selector;
+		ItemCart.prototype.reset_customer_selector = function () {
+			orig_reset_customer_selector.call(this);
+			pin_add_customer_control(this);
+		};
+
 		const orig_load_invoice = ItemCart.prototype.load_invoice;
 		ItemCart.prototype.load_invoice = function () {
 			orig_load_invoice.call(this);
 			update_return_mode_banner(this);
+			ensure_default_walk_in_customer(this);
 		};
 
 		const orig_update_customer_section = ItemCart.prototype.update_customer_section;
@@ -7711,11 +7724,101 @@ frappe.provide("kqs_retail.point_of_sale");
 		};
 
 		ItemCart.prototype._kqs_cart_patched = true;
+		inject_pos_customer_picker_styles();
 
 		const pos = window.cur_pos;
 		if (pos?.cart) {
 			ensure_cart_layby_button(pos.cart);
+			pin_add_customer_control(pos.cart);
+			ensure_default_walk_in_customer(pos.cart);
 		}
+	}
+
+	function resolve_default_walk_in_customer() {
+		const from_settings = window.cur_pos?.settings?.customer;
+		if (from_settings) return from_settings;
+		return "Walk-in Customer";
+	}
+
+	function ensure_default_walk_in_customer(cart) {
+		if (!cart?.events?.get_frm) return;
+		const frm = cart.events.get_frm();
+		if (!frm?.doc || frm.doc.is_return) return;
+		if (frm.doc.customer) return;
+
+		const customer = resolve_default_walk_in_customer();
+		if (!customer) return;
+
+		frappe.db.exists("Customer", customer).then((exists) => {
+			if (!exists || frm.doc.customer) return;
+			frappe.model.set_value(frm.doc.doctype, frm.doc.name, "customer", customer).then(() => {
+				if (typeof cart.fetch_customer_details === "function") {
+					cart.fetch_customer_details(customer).then(() => {
+						cart.events.customer_details_updated?.(cart.customer_info);
+						cart.update_customer_section?.();
+						cart.update_totals_section?.();
+					});
+				}
+			});
+		});
+	}
+
+	function pin_add_customer_control(cart) {
+		if (!cart?.$customer_section?.length || !cart.customer_field) return;
+		if (cart.$customer_section.find(".kqs-add-customer-btn").length) return;
+		// Only while the search field is visible (no selected customer card yet).
+		if (!cart.$customer_section.find(".customer-field").length) return;
+
+		const $btn = $(`
+			<button type="button" class="btn btn-default btn-sm kqs-add-customer-btn">
+				${__("Add Customer")}
+			</button>
+		`);
+		$btn.on("click", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			cart.customer_field.new_doc();
+		});
+		cart.$customer_section.append($btn);
+	}
+
+	function inject_pos_customer_picker_styles() {
+		if (document.getElementById("kqs-pos-customer-picker-styles")) return;
+		const style = document.createElement("style");
+		style.id = "kqs-pos-customer-picker-styles";
+		style.textContent = `
+			.point-of-sale-app .customer-section {
+				display: flex;
+				flex-direction: column;
+				gap: 0.45rem;
+			}
+			.point-of-sale-app .customer-section .kqs-add-customer-btn {
+				align-self: stretch;
+				flex-shrink: 0;
+				font-weight: 600;
+				border: 1px solid var(--border-color, #d1d5db);
+				background: var(--fg-color, #fff);
+			}
+			.point-of-sale-app .customer-section .customer-field {
+				min-width: 0;
+			}
+			/* Keep Frappe "Create a new Customer" visible at the bottom of long lists */
+			.point-of-sale-app .customer-section .awesomplete > ul {
+				max-height: min(42vh, 280px);
+				overflow-y: auto;
+				padding-bottom: 2.6rem;
+				position: relative;
+			}
+			.point-of-sale-app .customer-section .awesomplete > ul > li:last-child {
+				position: sticky;
+				bottom: 0;
+				z-index: 2;
+				background: var(--fg-color, #fff);
+				border-top: 1px solid var(--border-color, #e5e7eb);
+				box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.04);
+			}
+		`;
+		document.head.appendChild(style);
 	}
 
 	function inject_pos_payment_styles() {
@@ -8259,9 +8362,8 @@ frappe.provide("kqs_retail.point_of_sale");
 			wrap_pos_submit_invoice(this);
 		};
 
-		const orig_close_pos = Controller.prototype.close_pos;
 		Controller.prototype.close_pos = function () {
-			if (!this.$components_wrapper?.is(":visible")) return;
+			// Allow close from outdated-opening dialog even if the cart UI is not visible.
 			const pos_opening = this.pos_opening;
 			if (!pos_opening) {
 				frappe.msgprint(__("No open POS session found."));

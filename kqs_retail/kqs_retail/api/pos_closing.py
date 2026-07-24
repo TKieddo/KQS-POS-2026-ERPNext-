@@ -16,10 +16,18 @@ from kqs_retail.utils.closing_validation import (
 	collect_closing_blockers,
 	throw_if_closing_blocked,
 )
+from kqs_retail.utils.manager_access import is_stock_manager
+
+
+def _can_close_opening(opening) -> bool:
+	"""Cashiers close their own session; managers can close any open till."""
+	if opening.user == frappe.session.user:
+		return True
+	return is_stock_manager()
 
 
 def _authorize_closing_entry(doc) -> None:
-	if doc.user != frappe.session.user:
+	if doc.user != frappe.session.user and not is_stock_manager():
 		frappe.throw(_("You can only close your own POS session."), frappe.PermissionError)
 	if not frappe.has_permission("POS Closing Entry", "submit", doc=doc):
 		frappe.throw(_("Not permitted to submit POS Closing Entry."), frappe.PermissionError)
@@ -111,6 +119,24 @@ def _apply_closing_amounts(doc, payment_reconciliation: str | list) -> None:
 
 
 @frappe.whitelist()
+def list_open_pos_sessions(limit: int = 20) -> list[dict]:
+	"""Open POS Opening Entries the current user may close (own, or any if manager)."""
+	limit = min(int(limit or 20), 50)
+	filters: dict = {"status": "Open", "docstatus": 1}
+	if not is_stock_manager():
+		filters["user"] = frappe.session.user
+
+	rows = frappe.get_all(
+		"POS Opening Entry",
+		filters=filters,
+		fields=["name", "user", "period_start_date", "pos_profile", "company"],
+		order_by="period_start_date desc",
+		limit_page_length=limit,
+	)
+	return rows
+
+
+@frappe.whitelist()
 def prepare_closing_entry(pos_opening_entry: str) -> dict:
 	"""Open one draft closing entry for this session, with invoices loaded on the server."""
 	if not pos_opening_entry:
@@ -119,8 +145,11 @@ def prepare_closing_entry(pos_opening_entry: str) -> dict:
 	opening = frappe.get_doc("POS Opening Entry", pos_opening_entry)
 	if opening.status != "Open":
 		frappe.throw(_("Selected POS Opening Entry is not open."))
-	if opening.user != frappe.session.user:
-		frappe.throw(_("You can only close your own POS session."), frappe.PermissionError)
+	if not _can_close_opening(opening):
+		frappe.throw(
+			_("You can only close your own POS session. Ask a manager to close this till."),
+			frappe.PermissionError,
+		)
 
 	existing_rows = frappe.get_all(
 		"POS Closing Entry",

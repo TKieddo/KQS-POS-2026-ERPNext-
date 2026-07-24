@@ -4,6 +4,7 @@ frappe.ui.form.on("POS Closing Entry", {
 	onload(frm) {
 		frm.kqs_prepared_closing =
 			frm.doc.docstatus === 0 &&
+			!frm.is_new() &&
 			!frm.doc.amended_from &&
 			Boolean(frm.doc.pos_invoices?.length || frm.doc.sales_invoices?.length);
 		if (frm.kqs_prepared_closing) {
@@ -19,6 +20,29 @@ frappe.ui.form.on("POS Closing Entry", {
 		kqs_setup_cashier_closing_actions(frm);
 
 		if (frm.doc.docstatus !== 0) {
+			return;
+		}
+
+		// New / unsaved forms have a client-only name (new-pos-closing-entry-…).
+		// Our submit API needs a real saved doc — prepare from the opening first.
+		if (frm.is_new() || String(frm.doc.name || "").startsWith("new-pos-closing-entry")) {
+			kqs_hide_client_submit_actions(frm);
+			if (!frm.doc.pos_opening_entry) {
+				frm.dashboard.set_headline(
+					__("Select a POS Opening Entry, then click Submit Closing."),
+					"orange"
+				);
+				frm.page.set_primary_action(__("Submit Closing"), () => {
+					frappe.msgprint(__("Select a POS Opening Entry first."));
+				});
+				return;
+			}
+			frm.page.set_primary_action(__("Submit Closing"), () => kqs_prepare_then_submit(frm));
+			frm.dashboard.set_headline(
+				__(
+					"This closing is not saved yet. Submit Closing will create the closing from the opening, then submit it."
+				)
+			);
 			return;
 		}
 
@@ -81,8 +105,18 @@ function kqs_undo_erpnext_period_end_touch(frm) {
 	}, 0);
 }
 
+function kqs_payment_reconciliation_payload(frm) {
+	return (frm.doc.payment_reconciliation || []).map((row) => ({
+		mode_of_payment: row.mode_of_payment,
+		closing_amount: row.closing_amount,
+	}));
+}
+
 function kqs_load_closing_blockers(frm) {
-	if (!frm.doc.name || frm.doc.docstatus !== 0) {
+	if (!frm.doc.name || frm.is_new() || frm.doc.docstatus !== 0) {
+		return;
+	}
+	if (String(frm.doc.name).startsWith("new-pos-closing-entry")) {
 		return;
 	}
 	frappe.call({
@@ -98,8 +132,58 @@ function kqs_load_closing_blockers(frm) {
 	});
 }
 
+function kqs_prepare_then_submit(frm) {
+	const opening = frm.doc.pos_opening_entry;
+	if (!opening) {
+		frappe.msgprint(__("Select a POS Opening Entry first."));
+		return;
+	}
+
+	const payment_reconciliation = kqs_payment_reconciliation_payload(frm);
+
+	frappe.call({
+		method: "kqs_retail.api.pos_closing.prepare_closing_entry",
+		args: { pos_opening_entry: opening },
+		freeze: true,
+		freeze_message: __("Preparing POS closing..."),
+		callback(r) {
+			if (r.exc || !r.message?.name) {
+				return;
+			}
+			const name = r.message.name;
+			frappe.call({
+				method: "kqs_retail.api.pos_closing.submit_closing_entry",
+				args: {
+					name,
+					payment_reconciliation: JSON.stringify(payment_reconciliation),
+				},
+				freeze: true,
+				freeze_message: __("Submitting POS closing..."),
+				callback(sr) {
+					if (sr.exc) {
+						frappe.set_route("Form", "POS Closing Entry", name);
+						return;
+					}
+					frappe.show_alert(
+						{
+							message: __("POS closed successfully."),
+							indicator: "green",
+						},
+						10
+					);
+					frappe.set_route("Form", "POS Closing Entry", name);
+				},
+			});
+		},
+	});
+}
+
 function kqs_submit_closing_entry(frm) {
 	if (!frm.doc.name || frm.doc.docstatus !== 0) {
+		return;
+	}
+	if (frm.is_new() || String(frm.doc.name).startsWith("new-pos-closing-entry")) {
+		kqs_prepare_then_submit(frm);
 		return;
 	}
 
@@ -108,16 +192,11 @@ function kqs_submit_closing_entry(frm) {
 		return;
 	}
 
-	const payment_reconciliation = (frm.doc.payment_reconciliation || []).map((row) => ({
-		mode_of_payment: row.mode_of_payment,
-		closing_amount: row.closing_amount,
-	}));
-
 	frappe.call({
 		method: "kqs_retail.api.pos_closing.submit_closing_entry",
 		args: {
 			name: frm.doc.name,
-			payment_reconciliation: JSON.stringify(payment_reconciliation),
+			payment_reconciliation: JSON.stringify(kqs_payment_reconciliation_payload(frm)),
 		},
 		freeze: true,
 		freeze_message: __("Submitting POS closing..."),
@@ -192,6 +271,10 @@ function show_closing_status_headline(frm) {
 		return;
 	}
 
+	if (frm.is_new() || String(frm.doc.name || "").startsWith("new-pos-closing-entry")) {
+		return;
+	}
+
 	if (frm.kqs_closing_blockers?.length) {
 		const first = frm.kqs_closing_blockers[0];
 		const more =
@@ -201,10 +284,7 @@ function show_closing_status_headline(frm) {
 				  ])
 				: "";
 		frm.dashboard.set_headline(
-			__(
-				"Cannot close yet — {0}: {1}{2}",
-				[first.invoice, first.message, more]
-			),
+			__("Cannot close yet — {0}: {1}{2}", [first.invoice, first.message, more]),
 			"red"
 		);
 		return;
@@ -228,9 +308,7 @@ function show_closing_status_headline(frm) {
 		!frm.doc.sales_invoices?.length
 	) {
 		frm.dashboard.set_headline(
-			__(
-				"Invoices are still loading. Wait a moment, then use Submit Closing at the top."
-			)
+			__("Invoices are still loading. Wait a moment, then use Submit Closing at the top.")
 		);
 	}
 }

@@ -11,14 +11,14 @@ required_apps = ["erpnext"]
 add_to_apps_screen = [
 	{
 		"name": "point_of_sale",
-		"logo": "/assets/kqs_retail/images/kqs.svg",
+		"logo": "/assets/kqs_retail/images/kqs-logo.png",
 		"title": "Point of Sale",
 		"route": "/app/point-of-sale",
 		"has_permission": "kqs_retail.api.has_pos_app_permission",
 	},
 	{
 		"name": "kqs_retail",
-		"logo": "/assets/kqs_retail/images/kqs.svg",
+		"logo": "/assets/kqs_retail/images/kqs-logo.png",
 		"title": "KQS Retail",
 		"route": "/app/layby-agreement",
 		"has_permission": "kqs_retail.api.has_app_permission",
@@ -39,6 +39,7 @@ doctype_js = {
 	"Item": "public/js/item.js",
 	"Customer": "public/js/customer.js",
 	"POS Closing Entry": "public/js/pos_closing_entry.js",
+	"POS Opening Entry": "public/js/pos_opening_entry.js",
 }
 
 doctype_list_js = {
@@ -76,6 +77,7 @@ after_migrate = [
 	"kqs_retail.setup.catalog_permissions.ensure",
 	"kqs_retail.setup.cashier_permissions.ensure",
 	"kqs_retail.setup.manager_permissions.ensure",
+	"kqs_retail.setup.stock_permissions.ensure",
 	"kqs_retail.setup.pos_payments.ensure_default_pos_payment_methods",
 	"kqs_retail.setup.customer_defaults.ensure_customer_defaults",
 	"kqs_retail.setup.customer_fields.ensure_customer_custom_fields",
@@ -145,7 +147,7 @@ fixtures = [
 	},
 	{
 		"dt": "Page",
-		"filters": [["name", "in", ["quick-add-product", "assign-to-branch", "kqs-returns", "kqs-customer-account", "kqs-layby-ops"]]],
+		"filters": [["name", "in", ["quick-add-product", "edit-product", "receive-stock", "assign-to-branch", "kqs-returns", "kqs-customer-account", "kqs-layby-ops"]]],
 	},
 	{
 		"dt": "Report",

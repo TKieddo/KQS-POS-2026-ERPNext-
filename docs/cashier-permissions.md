@@ -120,7 +120,16 @@ Default policy: **new cashier features belong in POS**, not Desk.
 
 ### D. Manager-only feature
 
-Use role `KQS Store Manager` in `kqs_retail/setup/manager_permissions.py` — **not** `KQS Cashier`.
+Use role `KQS Store Manager` in `kqs_retail/setup/manager_permissions.py` (and `stock_permissions.py` for Stock Entry) — **not** `KQS Cashier`.
+
+Manager-only Desk pages (cashiers must not open these):
+
+| Page | Route |
+|------|-------|
+| Add Product | `/app/quick-add-product` |
+| Edit Product | `/app/edit-product` |
+| Receive Stock | `/app/receive-stock` |
+| Assign to Branch | `/app/assign-to-branch` |
 
 Managers opening **ERPNext Settings** need read on settings singles (e.g. Global Defaults). KQS adds these on migrate via `manager_permissions.ensure`. HQ admins use **System Manager** for full Setup access.
 

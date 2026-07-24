@@ -1564,6 +1564,8 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 			});
 		}
 		if (page.add_menu_item) {
+			page.add_menu_item(__("Edit Product"), () => frappe.set_route("edit-product"));
+			page.add_menu_item(__("Receive Stock"), () => frappe.set_route("receive-stock"));
 			page.add_menu_item(__("Manage Item Groups"), () => frappe.set_route("Tree", "Item Group"));
 			page.add_menu_item(__("Clear form"), () => {
 				frappe.confirm(__("Clear all fields on this form?"), clear_product_form);

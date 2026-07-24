@@ -4,9 +4,14 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, today
+from frappe.utils import cint, cstr, flt, today
 
 from kqs_retail.utils.defaults import get_default_company, get_default_stock_uom
+from kqs_retail.utils.manager_access import assert_stock_manager
+from kqs_retail.utils.items import (
+	get_variant_attributes,
+	resolve_template_code,
+)
 
 try:
 	from kqs_retail.utils.warehouses import (
@@ -149,6 +154,7 @@ def create_product_with_variants(
 	variant_matrix: JSON list of {attributes: {}, sku, rate, barcode, qty}
 	variant_attributes: JSON list of attribute names e.g. ["Size", "Color"]
 	"""
+	assert_stock_manager()
 	from erpnext.controllers.item_variant import create_variant
 
 	matrix = json.loads(variant_matrix) if isinstance(variant_matrix, str) else variant_matrix
@@ -218,7 +224,7 @@ def create_product_with_variants(
 			variant.item_name = _variant_item_name(item_name, attrs)
 			variant.standard_rate = flt(row.get("rate"))
 			if row.get("barcode"):
-				variant.barcode = row["barcode"]
+				_set_item_barcode(variant, str(row["barcode"]).strip())
 			variant_image = (row.get("image") or "").strip() or _variant_image_from_attrs(
 				attrs, attr_names, attr_images
 			)
@@ -233,7 +239,7 @@ def create_product_with_variants(
 		row = matrix[0]
 		template.standard_rate = flt(row.get("rate"))
 		if row.get("barcode"):
-			template.barcode = row["barcode"]
+			_set_item_barcode(template, str(row["barcode"]).strip())
 		row_image = (row.get("image") or "").strip()
 		if row_image:
 			template.image = row_image
@@ -260,6 +266,7 @@ def delete_items(item_codes: str):
 	if not frappe.has_permission("Item", "delete"):
 		frappe.throw(_("Not permitted to delete Items."), frappe.PermissionError)
 
+	assert_stock_manager()
 	from kqs_retail.utils.item_delete import delete_catalog_items as _delete_catalog_items
 
 	return _delete_catalog_items(codes)
@@ -665,8 +672,32 @@ def _ensure_new_item_code(item_code: str):
 
 
 def _receipt_stock(item_code: str, warehouse: str, qty: float, rate: float):
-	if qty <= 0:
-		return
+	_receipt_stock_batch(
+		[{"item_code": item_code, "qty": qty, "rate": rate}],
+		warehouse,
+	)
+
+
+def _receipt_stock_batch(lines: list[dict], warehouse: str) -> str | None:
+	"""Create and submit one Material Receipt for one or more items. Returns SE name."""
+	if not warehouse:
+		return None
+	items = []
+	for line in lines:
+		qty = flt(line.get("qty"))
+		if qty <= 0:
+			continue
+		rate = flt(line.get("rate") or 0)
+		items.append(
+			{
+				"item_code": line["item_code"],
+				"qty": qty,
+				"t_warehouse": warehouse,
+				"basic_rate": rate or 1,
+			}
+		)
+	if not items:
+		return None
 	company = frappe.db.get_value("Warehouse", warehouse, "company")
 	se = frappe.get_doc(
 		{
@@ -674,15 +705,417 @@ def _receipt_stock(item_code: str, warehouse: str, qty: float, rate: float):
 			"stock_entry_type": "Material Receipt",
 			"company": company,
 			"posting_date": today(),
-			"items": [
-				{
-					"item_code": item_code,
-					"qty": qty,
-					"t_warehouse": warehouse,
-					"basic_rate": rate or 1,
-				}
-			],
+			"items": items,
 		}
 	)
 	se.insert(ignore_permissions=True)
 	se.submit()
+	return se.name
+
+
+@frappe.whitelist()
+def search_products_for_edit(query: str = "", start: int = 0, limit: int = 30):
+	"""Search templates and standalone stock items for Edit Product."""
+	assert_stock_manager()
+	start = cint(start)
+	limit = min(cint(limit), 100)
+	query = (query or "").strip()
+	params: dict = {}
+	search_sql = ""
+	if query:
+		search_sql = """
+			AND (
+				i.item_name LIKE %(search)s
+				OR i.name LIKE %(search)s
+				OR i.item_code LIKE %(search)s
+				OR EXISTS (
+					SELECT 1 FROM `tabItem Barcode` ib
+					WHERE ib.parent = i.name AND ib.barcode LIKE %(search)s
+				)
+				OR EXISTS (
+					SELECT 1 FROM `tabItem` v
+					WHERE v.variant_of = i.name
+					  AND (
+						v.item_name LIKE %(search)s
+						OR v.name LIKE %(search)s
+						OR v.item_code LIKE %(search)s
+						OR EXISTS (
+							SELECT 1 FROM `tabItem Barcode` vb
+							WHERE vb.parent = v.name AND vb.barcode LIKE %(search)s
+						)
+					  )
+				)
+			)
+		"""
+		params["search"] = f"%{query}%"
+
+	rows = frappe.db.sql(
+		f"""
+		SELECT
+			i.name AS item_code,
+			i.item_name,
+			i.image,
+			i.item_group,
+			i.has_variants,
+			i.disabled
+		FROM `tabItem` i
+		WHERE i.disabled = 0
+		  AND i.is_stock_item = 1
+		  AND IFNULL(i.variant_of, '') = ''
+		  {search_sql}
+		ORDER BY i.modified DESC
+		LIMIT %(start)s, %(limit)s
+		""",
+		{**params, "start": start, "limit": limit},
+		as_dict=True,
+	)
+	return {"items": rows}
+
+
+@frappe.whitelist()
+def get_product_for_edit(item_code: str):
+	"""Load template or standalone item with variants for Edit Product."""
+	assert_stock_manager()
+	item_code = cstr(item_code or "").strip()
+	if not item_code or not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} was not found.").format(item_code or ""))
+
+	template_code = resolve_template_code(item_code)
+	template = frappe.get_doc("Item", template_code)
+	has_variants = bool(template.has_variants)
+	attr_names = [row.attribute for row in (template.attributes or []) if row.attribute]
+
+	item_groups = _item_groups_for_item(template)
+	gallery = []
+	if hasattr(template, "item_images"):
+		gallery = [row.image for row in (template.item_images or []) if row.image]
+
+	variants = []
+	if has_variants:
+		variant_rows = frappe.get_all(
+			"Item",
+			filters={"variant_of": template_code, "is_stock_item": 1},
+			fields=[
+				"name",
+				"item_code",
+				"item_name",
+				"standard_rate",
+				"image",
+				"disabled",
+			],
+			order_by="name",
+		)
+		for row in variant_rows:
+			attrs = get_variant_attributes(row.name)
+			variants.append(
+				{
+					"item_code": row.name,
+					"sku": row.item_code or row.name,
+					"item_name": row.item_name,
+					"attributes": attrs,
+					"attribute_label": ", ".join(f"{k}: {v}" for k, v in attrs.items()),
+					"barcode": _get_item_barcode(row.name),
+					"rate": flt(row.standard_rate),
+					"image": row.image or "",
+					"disabled": cint(row.disabled),
+					"qty_by_warehouse": _qty_by_kqs_warehouse(row.name),
+				}
+			)
+	else:
+		variants.append(
+			{
+				"item_code": template.name,
+				"sku": template.item_code or template.name,
+				"item_name": template.item_name,
+				"attributes": {},
+				"attribute_label": "",
+				"barcode": _get_item_barcode(template.name),
+				"rate": flt(template.standard_rate),
+				"image": template.image or "",
+				"disabled": cint(template.disabled),
+				"qty_by_warehouse": _qty_by_kqs_warehouse(template.name),
+			}
+		)
+
+	attr_defs = []
+	if attr_names:
+		allowed = _attribute_value_map(attr_names)
+		for name in attr_names:
+			attr_defs.append({"name": name, "values": sorted(allowed.get(name) or [])})
+
+	existing_combos = [
+		{k: v for k, v in (row.get("attributes") or {}).items()}
+		for row in variants
+		if row.get("attributes")
+	]
+
+	return {
+		"template": {
+			"item_code": template.name,
+			"style_code": template.name,
+			"item_name": template.item_name,
+			"description": template.description or "",
+			"item_group": template.item_group,
+			"item_groups": item_groups,
+			"image": template.image or "",
+			"gallery_images": gallery,
+			"standard_rate": flt(template.standard_rate),
+			"stock_uom": template.stock_uom or get_default_stock_uom(),
+			"has_variants": has_variants,
+			"disabled": cint(template.disabled),
+			"attributes": attr_names,
+		},
+		"attribute_defs": attr_defs,
+		"variants": variants,
+		"existing_combos": existing_combos,
+	}
+
+
+@frappe.whitelist()
+def update_product(
+	template: str,
+	item_name: str = "",
+	description: str = "",
+	item_group: str = "",
+	item_groups: str = "",
+	product_image: str = "",
+	gallery_images: str = "",
+	standard_rate: float | None = None,
+	stock_uom: str = "",
+	disabled: int | None = None,
+):
+	"""Update template / standalone fields. Style code is immutable."""
+	assert_stock_manager()
+	template = cstr(template or "").strip()
+	if not template or not frappe.db.exists("Item", template):
+		frappe.throw(_("Item {0} was not found.").format(template or ""))
+
+	doc = frappe.get_doc("Item", template)
+	if doc.variant_of:
+		frappe.throw(_("Edit the template {0}, not a variant SKU.").format(doc.variant_of))
+
+	groups = _parse_item_groups(item_groups, item_group)
+	if groups:
+		for name in groups:
+			if not frappe.db.exists("Item Group", name):
+				frappe.throw(_("Category {0} was not found.").format(name))
+		_apply_item_groups(doc, groups)
+
+	if item_name is not None and str(item_name).strip():
+		doc.item_name = str(item_name).strip()
+	if description is not None:
+		doc.description = description
+	if standard_rate is not None and str(standard_rate) != "":
+		doc.standard_rate = flt(standard_rate)
+	if stock_uom and str(stock_uom).strip():
+		doc.stock_uom = _resolve_stock_uom(stock_uom)
+	if disabled is not None and str(disabled) != "":
+		doc.disabled = cint(disabled)
+
+	main_image = (product_image or "").strip()
+	gallery = _parse_image_list(gallery_images)
+	if main_image or gallery:
+		if hasattr(doc, "item_images"):
+			doc.set("item_images", [])
+		_set_item_images(doc, main_image, gallery)
+	elif product_image == "" and gallery_images == "[]":
+		doc.image = ""
+		if hasattr(doc, "item_images"):
+			doc.set("item_images", [])
+
+	doc.save(ignore_permissions=True)
+	return {"template": doc.name}
+
+
+@frappe.whitelist()
+def update_variant(
+	item_code: str,
+	barcode: str | None = None,
+	rate: float | None = None,
+	image: str | None = None,
+	disabled: int | None = None,
+):
+	"""Update mutable fields on an existing variant or standalone SKU."""
+	assert_stock_manager()
+	item_code = cstr(item_code or "").strip()
+	if not item_code or not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} was not found.").format(item_code or ""))
+
+	doc = frappe.get_doc("Item", item_code)
+	if doc.has_variants:
+		frappe.throw(_("Use update_product for the template {0}.").format(item_code))
+
+	if rate is not None and str(rate) != "":
+		doc.standard_rate = flt(rate)
+	if image is not None:
+		doc.image = (image or "").strip()
+	if disabled is not None and str(disabled) != "":
+		doc.disabled = cint(disabled)
+	if barcode is not None:
+		_set_item_barcode(doc, (barcode or "").strip())
+
+	doc.save(ignore_permissions=True)
+	return {"item_code": doc.name}
+
+
+@frappe.whitelist()
+def add_variants_to_product(
+	template: str,
+	variants_json: str,
+	receive_warehouse: str = "",
+	attribute_value_images: str = "",
+):
+	"""Add new attribute combinations under an existing template. Attributes immutable on old SKUs."""
+	assert_stock_manager()
+	from erpnext.controllers.item_variant import create_variant
+
+	template = cstr(template or "").strip()
+	if not template or not frappe.db.exists("Item", template):
+		frappe.throw(_("Item {0} was not found.").format(template or ""))
+
+	doc = frappe.get_doc("Item", template)
+	if doc.variant_of:
+		frappe.throw(_("Select the template {0}, not a variant.").format(doc.variant_of))
+	if not doc.has_variants:
+		frappe.throw(
+			_("This item has no variants. Use Add Product to create a new style with variants.")
+		)
+
+	attr_names = [row.attribute for row in (doc.attributes or []) if row.attribute]
+	if not attr_names:
+		frappe.throw(_("Template {0} has no attributes configured.").format(template))
+
+	matrix = json.loads(variants_json) if isinstance(variants_json, str) else variants_json
+	if not matrix:
+		frappe.throw(_("Add at least one new variant."))
+
+	_validate_matrix_attributes(matrix, attr_names)
+	existing = _existing_variant_combo_keys(template, attr_names)
+	attr_images = _parse_attribute_value_images(attribute_value_images)
+	if attr_images:
+		_apply_attribute_swatch_images(attr_images)
+
+	company = get_default_company()
+	warehouse = (receive_warehouse or "").strip() or _default_central_warehouse(company)
+	if warehouse and not is_kqs_store_warehouse(warehouse, company):
+		frappe.throw(_("Select a valid KQS warehouse."))
+
+	created = []
+	receipt_lines = []
+	for row in matrix:
+		attrs = _row_attributes(row, attr_names)
+		combo_key = _combo_key(attrs, attr_names)
+		if combo_key in existing:
+			label = ", ".join(f"{k}: {attrs[k]}" for k in attr_names if attrs.get(k))
+			frappe.throw(_("Variant already exists for {0}.").format(label))
+
+		variant = create_variant(doc.name, attrs)
+		variant_code = (row.get("sku") or "").strip() or _default_variant_code(
+			template, attrs, attr_names
+		)
+		variant_code = _normalize_item_code(variant_code)
+		_ensure_new_item_code(variant_code)
+		variant.item_code = variant_code
+		variant.item_name = _variant_item_name(doc.item_name or template, attrs)
+		variant.standard_rate = flt(row.get("rate") or doc.standard_rate)
+		if row.get("barcode"):
+			_set_item_barcode(variant, str(row["barcode"]).strip())
+		variant_image = (row.get("image") or "").strip() or _variant_image_from_attrs(
+			attrs, attr_names, attr_images
+		)
+		if variant_image:
+			variant.image = variant_image
+		variant.insert(ignore_permissions=True)
+		created.append(variant.name)
+		existing.add(combo_key)
+		qty = flt(row.get("qty"))
+		if qty > 0 and warehouse:
+			receipt_lines.append(
+				{
+					"item_code": variant.name,
+					"qty": qty,
+					"rate": flt(row.get("rate") or variant.standard_rate or 0),
+				}
+			)
+
+	stock_entry = None
+	if receipt_lines and warehouse:
+		stock_entry = _receipt_stock_batch(receipt_lines, warehouse)
+
+	return {"template": template, "variants": created, "stock_entry": stock_entry}
+
+
+def _item_groups_for_item(item) -> list[str]:
+	groups = []
+	if _has_kqs_item_groups_field() and getattr(item, "kqs_item_groups", None):
+		try:
+			parsed = json.loads(item.kqs_item_groups)
+			if isinstance(parsed, list):
+				groups = [str(g).strip() for g in parsed if str(g).strip()]
+		except (TypeError, ValueError, json.JSONDecodeError):
+			groups = []
+	if not groups and item.item_group:
+		groups = [item.item_group]
+	return groups
+
+
+def _get_item_barcode(item_code: str) -> str:
+	rows = frappe.get_all(
+		"Item Barcode",
+		filters={"parent": item_code},
+		fields=["barcode"],
+		order_by="idx asc",
+		limit=1,
+	)
+	if rows and rows[0].barcode:
+		return rows[0].barcode
+	# Legacy / create path may set Item.barcode when present
+	if frappe.get_meta("Item").has_field("barcode"):
+		return frappe.db.get_value("Item", item_code, "barcode") or ""
+	return ""
+
+
+def _set_item_barcode(item, barcode: str):
+	barcode = (barcode or "").strip()
+	if frappe.get_meta("Item").has_field("barcode"):
+		item.barcode = barcode
+	if not hasattr(item, "barcodes"):
+		return
+	item.set("barcodes", [])
+	if barcode:
+		item.append("barcodes", {"barcode": barcode})
+
+
+def _qty_by_kqs_warehouse(item_code: str) -> dict[str, float]:
+	company = get_default_company()
+	try:
+		from kqs_retail.utils.warehouses import get_kqs_warehouse_names
+
+		warehouses = get_kqs_warehouse_names(company)
+	except Exception:
+		warehouses = []
+	if not warehouses:
+		return {}
+	rows = frappe.db.sql(
+		"""
+		SELECT warehouse, actual_qty
+		FROM `tabBin`
+		WHERE item_code = %s AND warehouse IN %s AND actual_qty != 0
+		""",
+		(item_code, warehouses),
+		as_dict=True,
+	)
+	return {row.warehouse: flt(row.actual_qty) for row in rows}
+
+
+def _combo_key(attrs: dict, attr_names: list[str]) -> tuple:
+	return tuple((name, (attrs.get(name) or "").strip()) for name in attr_names)
+
+
+def _existing_variant_combo_keys(template: str, attr_names: list[str]) -> set[tuple]:
+	codes = frappe.get_all("Item", filters={"variant_of": template}, pluck="name")
+	keys: set[tuple] = set()
+	for code in codes:
+		attrs = get_variant_attributes(code)
+		keys.add(_combo_key(attrs, attr_names))
+	return keys

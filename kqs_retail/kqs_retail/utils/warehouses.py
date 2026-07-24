@@ -7,11 +7,22 @@ import frappe
 
 from kqs_retail.utils.defaults import get_default_company
 
-# warehouse_name on the central hub row (parent of store branches).
+# warehouse_name on the central hub row (Add Product opening stock lands here).
 CENTRAL_WAREHOUSE_NAME = "Central"
 
 # Fallback when Central is missing (older demo sites).
 LEGACY_WAREHOUSE_SUFFIXES = ("Central", "Store-01", "Store-02")
+
+# ERPNext company defaults — not KQS retail branches (exclude from flat branch discovery).
+_ERPNEXT_DEFAULT_WAREHOUSE_NAMES = frozenset(
+	{
+		"Stores",
+		"Finished Goods",
+		"Work In Progress",
+		"Goods In Transit",
+		"All Warehouses",
+	}
+)
 
 
 def get_kqs_central_warehouse(company: str = "") -> str:
@@ -40,13 +51,36 @@ def get_kqs_central_warehouse(company: str = "") -> str:
 
 
 def get_kqs_branch_warehouse_names(company: str = "") -> list[str]:
-	"""Retail store warehouses — children of Central, plus any warehouse linked to a POS profile."""
+	"""Retail store warehouses for Assign to Branch and POS.
+
+	Discovery order (any match counts):
+	1. Leaf warehouses linked to a POS Profile (recommended production setup)
+	2. Leaf children of Central when parent was set via API/seed
+	3. Other company leaf warehouses except Central and ERPNext defaults
+
+	ERPNext Desk cannot set Central as *parent* while Central holds stock (is_group=0).
+	Do not use the warehouse tree parent field in the UI — use flat warehouses + POS profiles.
+	"""
 	company = company or get_default_company()
 	if not company:
 		return []
 
 	central = get_kqs_central_warehouse(company)
 	names: set[str] = set()
+
+	for row in frappe.get_all(
+		"POS Profile",
+		filters={"company": company, "disabled": 0, "warehouse": ["is", "set"]},
+		fields=["warehouse"],
+	):
+		wh = row.warehouse
+		if not wh or wh == central:
+			continue
+		if frappe.db.get_value("Warehouse", wh, "disabled"):
+			continue
+		if frappe.db.get_value("Warehouse", wh, "company") != company:
+			continue
+		names.add(wh)
 
 	if central:
 		for name in frappe.get_all(
@@ -63,18 +97,15 @@ def get_kqs_branch_warehouse_names(company: str = "") -> list[str]:
 				names.add(name)
 
 	for row in frappe.get_all(
-		"POS Profile",
-		filters={"company": company, "disabled": 0, "warehouse": ["is", "set"]},
-		fields=["warehouse"],
+		"Warehouse",
+		filters={"company": company, "is_group": 0, "disabled": 0},
+		fields=["name", "warehouse_name"],
 	):
-		wh = row.warehouse
-		if not wh or wh == central:
+		if central and row.name == central:
 			continue
-		if frappe.db.get_value("Warehouse", wh, "disabled"):
+		if _is_erpnext_default_warehouse(row.warehouse_name):
 			continue
-		if frappe.db.get_value("Warehouse", wh, "company") != company:
-			continue
-		names.add(wh)
+		names.add(row.name)
 
 	if names:
 		return sorted(names)
@@ -123,6 +154,10 @@ def is_kqs_store_warehouse(name: str, company: str = "") -> bool:
 	if wh_company != company:
 		return False
 	return name in get_kqs_warehouse_names(company)
+
+
+def _is_erpnext_default_warehouse(warehouse_name: str | None) -> bool:
+	return (warehouse_name or "") in _ERPNEXT_DEFAULT_WAREHOUSE_NAMES
 
 
 def _legacy_warehouse_names(company: str) -> list[str]:
