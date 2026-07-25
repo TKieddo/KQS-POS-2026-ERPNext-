@@ -8,7 +8,10 @@ frappe.provide("kqs_retail.silent_print");
 	 * does not clip the right edge (prices / "Price" / thank-you line).
 	 */
 	const PAGE_WIDTH_MM = 70;
+	const LOGO_ASSET = "/assets/kqs_retail/images/kqs-receipt-logo.png";
 	let print_queue = Promise.resolve();
+	let qz_security_ready = null;
+	let unsigned_hint_shown = false;
 
 	/** Extra CSS forced into QZ HTML — thermal + pixel raster need heavy black type. */
 	const QZ_PRINT_BOOST_CSS = `
@@ -40,6 +43,12 @@ frappe.provide("kqs_retail.silent_print");
 		.kqs-rcpt, .kqs-rcpt * {
 			color: #000 !important;
 			opacity: 1 !important;
+		}
+		.kqs-logo {
+			display: block !important;
+			width: 100% !important;
+			max-width: 66mm !important;
+			height: auto !important;
 		}
 		.kqs-muted-line,
 		.kqs-policy,
@@ -109,6 +118,48 @@ frappe.provide("kqs_retail.silent_print");
 		);
 	}
 
+	function blob_to_data_url(blob) {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result);
+			reader.onerror = reject;
+			reader.readAsDataURL(blob);
+		});
+	}
+
+	async function inline_images_for_qz(html) {
+		const origin = window.location.origin;
+		// Relative site paths → absolute (QZ headless browser has no page origin).
+		html = html.replace(/src=(["'])(\/[^"']+)\1/gi, (match, q, path) => {
+			return `src=${q}${origin}${path}${q}`;
+		});
+
+		const candidates = new Set([
+			`${origin}${LOGO_ASSET}`,
+			LOGO_ASSET,
+		]);
+		const absMatches = html.match(/src=["'](https?:\/\/[^"']+\.(?:png|jpe?g|gif|svg|webp))["']/gi) || [];
+		absMatches.forEach((m) => {
+			const url = m.replace(/^src=["']/i, "").replace(/["']$/, "");
+			if (url.includes("kqs") || url.includes("/assets/kqs_retail/")) {
+				candidates.add(url);
+			}
+		});
+
+		for (const url of candidates) {
+			try {
+				const resp = await fetch(url, { credentials: "same-origin" });
+				if (!resp.ok) continue;
+				const data_url = await blob_to_data_url(await resp.blob());
+				const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+				html = html.replace(new RegExp(escaped, "g"), data_url);
+			} catch (e) {
+				/* keep absolute URL fallback */
+			}
+		}
+		return html;
+	}
+
 	function fetch_print_html(doctype, docname, print_format, letterhead) {
 		const has_letterhead = Boolean(letterhead);
 		return frappe
@@ -122,18 +173,84 @@ frappe.provide("kqs_retail.silent_print");
 					letterhead: letterhead || null,
 				},
 			})
-			.then((r) => {
+			.then(async (r) => {
 				const body = r.message?.html;
 				const style = r.message?.style || "";
 				if (!body) {
 					throw new Error("Empty print HTML");
 				}
+				const with_images = await inline_images_for_qz(body);
 				return (
 					"<!DOCTYPE html><html><head><meta charset=\"utf-8\">" +
 					`<style>${style}\n${QZ_PRINT_BOOST_CSS}</style></head>` +
-					`<body>${body}</body></html>`
+					`<body>${with_images}</body></html>`
 				);
 			});
+	}
+
+	function ensure_qz_security() {
+		if (qz_security_ready) {
+			return qz_security_ready;
+		}
+		qz_security_ready = frappe.ui.form.qz_init().then(() => {
+			if (typeof qz === "undefined" || !qz.security) {
+				return false;
+			}
+			qz.security.setCertificatePromise((resolve) => {
+				frappe
+					.call({
+						method: "kqs_retail.api.qz_sign.get_certificate",
+						freeze: false,
+					})
+					.then((r) => {
+						const cert = cstr(r.message || "").trim();
+						resolve(cert || "");
+					})
+					.catch(() => resolve(""));
+			});
+			qz.security.setSignatureAlgorithm("SHA512");
+			qz.security.setSignaturePromise((toSign) => {
+				return (resolve, reject) => {
+					frappe
+						.call({
+							method: "kqs_retail.api.qz_sign.sign_message",
+							args: { request: toSign },
+							freeze: false,
+						})
+						.then((r) => {
+							const sig = cstr(r.message || "").trim();
+							if (sig) {
+								resolve(sig);
+							} else {
+								reject("empty signature");
+							}
+						})
+						.catch(() => reject("sign failed"));
+				};
+			});
+			return frappe
+				.call({
+					method: "kqs_retail.api.qz_sign.is_signing_configured",
+					freeze: false,
+				})
+				.then((r) => Boolean(r.message?.configured))
+				.catch(() => false);
+		});
+		return qz_security_ready;
+	}
+
+	function hint_remember_allow() {
+		if (unsigned_hint_shown) return;
+		unsigned_hint_shown = true;
+		frappe.show_alert(
+			{
+				message: __(
+					"QZ Tray: tick “Remember this decision” on the Allow dialog so it stops asking on every print."
+				),
+				indicator: "orange",
+			},
+			12
+		);
 	}
 
 	async function resolve_qz_printer() {
@@ -155,9 +272,13 @@ frappe.provide("kqs_retail.silent_print");
 		if (!frappe.ui?.form?.qz_connect) {
 			throw new Error("QZ helpers not available");
 		}
+		const signing_ok = await ensure_qz_security();
 		await frappe.ui.form.qz_connect();
 		if (typeof qz === "undefined" || !qz.print || !qz.configs?.create) {
 			throw new Error("QZ Tray API not ready");
+		}
+		if (!signing_ok) {
+			hint_remember_allow();
 		}
 
 		const html = await fetch_print_html(doctype, docname, print_format, letterhead);

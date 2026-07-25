@@ -81,7 +81,25 @@ POS tries **QZ Tray** first, then the **browser** print window. Chrome launched 
    - Keep **Enable QZ Silent Print on POS** checked
    - Set **QZ Printer Name** to the exact thermal name from Windows/macOS (or leave blank for the OS default)
 3. Open POS once and allow the site when QZ asks to connect.
-4. Complete a test sale — the receipt should print with no browser Print dialog.
+4. When the **Allow / Unknown signature** dialog appears, tick **Remember this decision** (or **Always allow**), then Allow — otherwise QZ asks on every receipt.
+5. Complete a test sale — the receipt should print with no browser Print dialog. The KQS logo should appear at the top (QZ inlines it so the printer does not need to fetch `/assets`).
+
+**Stop the Allow dialog permanently (optional, per till or site)**
+
+Unsigned QZ calls show “Unknown signature”. Two options:
+
+1. **Fast (each till):** tick **Remember this decision** once (step 4 above).
+2. **Site signing (all tills):** put a QZ-trusted certificate + private key in site config, then restart:
+
+```bash
+# on the VPS / bench host — values are PEM text (keep private key secret)
+bench --site pos.kqsfootwear.com set-config kqs_qz_certificate "$(cat digital-certificate.txt)"
+bench --site pos.kqsfootwear.com set-config kqs_qz_private_key "$(cat private-key.pem)"
+```
+
+Generate a machine override cert from QZ Tray (**Advanced → Site Manager**) for free testing, or buy a trusted cert from [qz.io](https://qz.io) for production across many PCs. After config, hard-refresh POS; the Allow modal should stop.
+
+Signing QZ certificates so the “Allow?” prompt never returns after first trust is optional store IT work; v1 works with Frappe’s normal QZ connect plus **Remember this decision**.
 
 **Fallback — Chrome kiosk printing**
 
@@ -94,8 +112,6 @@ chrome.exe --kiosk-printing --app=https://YOUR-SITE/app/point-of-sale
 (Edge: same flag if supported.) Create a desktop shortcut with that target for cashiers.
 
 **Last resort:** allow pop-ups for the site and click Print in the dialog.
-
-Signing QZ certificates so the “Allow?” prompt never returns after first trust is optional store IT work; v1 works with Frappe’s normal QZ connect.
 
 **Header:** Company name comes from **Company** in ERPNext (`doc.company`) — not hardcoded. Branch address is from the POS Profile.
 

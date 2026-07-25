@@ -8,7 +8,8 @@
 {%- endmacro -%}
 
 {%- macro kqs_logo() -%}
-<img class="kqs-logo" src="/assets/kqs_retail/images/kqs-receipt-logo.png" alt="KQS" />
+{%- set _logo = frappe.utils.get_url("/assets/kqs_retail/images/kqs-receipt-logo.png") -%}
+<img class="kqs-logo" src="{{ _logo }}" alt="KQS" />
 {%- endmacro -%}
 
 {%- macro kqs_company_name() -%}
