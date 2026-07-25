@@ -3,9 +3,68 @@ frappe.provide("kqs_retail.silent_print");
 
 (function () {
 	const STORAGE_KEY = "kqs_qz_printer_name";
-	/** ~72mm printable width on 80mm thermal (inches for QZ pageWidth). */
-	const PAGE_WIDTH_IN = 2.83;
+	/**
+	 * Physical 80mm roll ≈ 72mm printable. Stay slightly under so QZ raster
+	 * does not clip the right edge (prices / "Price" / thank-you line).
+	 */
+	const PAGE_WIDTH_MM = 70;
 	let print_queue = Promise.resolve();
+
+	/** Extra CSS forced into QZ HTML — thermal + pixel raster need heavy black type. */
+	const QZ_PRINT_BOOST_CSS = `
+		html, body {
+			margin: 0 !important;
+			padding: 0 !important;
+			width: ${PAGE_WIDTH_MM}mm !important;
+			max-width: ${PAGE_WIDTH_MM}mm !important;
+			background: #fff !important;
+			color: #000 !important;
+			-webkit-print-color-adjust: exact !important;
+			print-color-adjust: exact !important;
+			-webkit-font-smoothing: none !important;
+			font-smooth: never !important;
+		}
+		.print-format, .print-format-gutter, .page-break {
+			margin: 0 !important;
+			padding: 0 !important;
+			width: ${PAGE_WIDTH_MM}mm !important;
+			max-width: ${PAGE_WIDTH_MM}mm !important;
+		}
+		.kqs-rcpt {
+			width: 66mm !important;
+			max-width: 66mm !important;
+			margin: 0 !important;
+			padding: 1mm 2.5mm 3mm 0.5mm !important;
+			color: #000 !important;
+		}
+		.kqs-rcpt, .kqs-rcpt * {
+			color: #000 !important;
+			opacity: 1 !important;
+		}
+		.kqs-muted-line,
+		.kqs-policy,
+		.kqs-policy-title,
+		.kqs-item-sub,
+		.kqs-thanks,
+		.kqs-social-line,
+		.kqs-footer-line {
+			font-family: Arial, Helvetica, sans-serif !important;
+			font-weight: 900 !important;
+			color: #000 !important;
+			opacity: 1 !important;
+			-webkit-text-stroke: 0.2px #000;
+		}
+		.kqs-muted-line { font-size: 10pt !important; }
+		.kqs-policy { font-size: 9.5pt !important; line-height: 1.35 !important; }
+		.kqs-cols-head, .kqs-cols-row {
+			grid-template-columns: 5mm minmax(0, 1fr) 8mm 22mm !important;
+		}
+		.kqs-cols-row .price, .kqs-cols-head .price,
+		.kqs-row > span:last-child {
+			white-space: nowrap !important;
+			overflow: visible !important;
+		}
+	`;
 
 	function get_settings() {
 		return frappe.boot?.kqs_retail_settings || {};
@@ -71,7 +130,8 @@ frappe.provide("kqs_retail.silent_print");
 				}
 				return (
 					"<!DOCTYPE html><html><head><meta charset=\"utf-8\">" +
-					`<style>${style}</style></head><body>${body}</body></html>`
+					`<style>${style}\n${QZ_PRINT_BOOST_CSS}</style></head>` +
+					`<body>${body}</body></html>`
 				);
 			});
 	}
@@ -102,9 +162,16 @@ frappe.provide("kqs_retail.silent_print");
 
 		const html = await fetch_print_html(doctype, docname, print_format, letterhead);
 		const printer = await resolve_qz_printer();
+		// Avoid colorType blackwhite — it thresholds antialiased text and washes
+		// out address/policy lines on thermal heads.
 		const config = qz.configs.create(printer || null, {
+			units: "mm",
+			size: { width: PAGE_WIDTH_MM },
+			margins: { top: 0, right: 0, bottom: 0, left: 0 },
 			scaleContent: true,
-			margins: 0,
+			rasterize: true,
+			interpolation: "nearest-neighbor",
+			density: "203dpi",
 		});
 		const data = [
 			{
@@ -112,7 +179,11 @@ frappe.provide("kqs_retail.silent_print");
 				format: "html",
 				flavor: "plain",
 				data: html,
-				options: { pageWidth: PAGE_WIDTH_IN },
+				options: {
+					pageWidth: PAGE_WIDTH_MM,
+					units: "mm",
+					scaleContent: true,
+				},
 			},
 		];
 		await qz.print(config, data);
