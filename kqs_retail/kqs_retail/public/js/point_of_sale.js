@@ -1,5 +1,5 @@
 /* Copyright (c) 2026, KQS â€” Layby, returns & checkout flow for ERPNext Point of Sale */
-const KQS_POS_PAGE_SCRIPT_VERSION = 49;
+const KQS_POS_PAGE_SCRIPT_VERSION = 50;
 
 frappe.provide("kqs_retail.pos_returns");
 
@@ -875,28 +875,53 @@ kqs_retail.pos_returns = (function () {
 		}
 
 		const $receipt_list = layout.find("#kqs-returns-receipt-list");
-		$receipt_list.html(`<p class="text-muted small">${__("Loading store receiptsâ€¦")}</p>`);
+		$receipt_list.html(`<p class="text-muted small">${__("Loading store receipts…")}</p>`);
+
+		const apply_payload = (payload) => {
+			const defaults = get_return_policy_defaults();
+			store_context = {
+				store_label: payload.store_label || ctx.pos_profile,
+				return_window_days: payload.return_window_days || defaults.return_window_days,
+				receipt_search_window_days:
+					payload.receipt_search_window_days || defaults.receipt_search_window_days,
+				count: payload.count || (payload.receipts || []).length,
+			};
+			loaded_receipts = payload.receipts || [];
+			update_store_chips();
+			render_receipt_list(loaded_receipts);
+			fit_returns_layer();
+		};
+
+		if (window.kqs_offline && !window.kqs_offline.is_online()) {
+			window.kqs_offline_catalog.filter_receipts(term).then((receipts) => {
+				apply_payload({
+					receipts,
+					store_label: ctx.pos_profile,
+					count: receipts.length,
+				});
+			});
+			return;
+		}
+
 		frappe.call({
 			method: "kqs_retail.api.returns.search_receipts",
 			args: { search_term: term || "", limit: 50, pos_profile: ctx.pos_profile },
 			callback(r) {
 				if (r.exc) {
-					$receipt_list.html("");
+					if (window.kqs_offline_catalog?.filter_receipts) {
+						window.kqs_offline_catalog.filter_receipts(term).then((receipts) => {
+							apply_payload({
+								receipts,
+								store_label: ctx.pos_profile,
+								count: receipts.length,
+							});
+						});
+					} else {
+						$receipt_list.html("");
+					}
 					return;
 				}
-				const payload = r.message || {};
-				const defaults = get_return_policy_defaults();
-				store_context = {
-					store_label: payload.store_label || ctx.pos_profile,
-					return_window_days: payload.return_window_days || defaults.return_window_days,
-					receipt_search_window_days:
-						payload.receipt_search_window_days || defaults.receipt_search_window_days,
-					count: payload.count || 0,
-				};
-				loaded_receipts = payload.receipts || [];
-				update_store_chips();
-				render_receipt_list(loaded_receipts);
-				fit_returns_layer();
+				apply_payload(r.message || {});
 			},
 		});
 	}
@@ -1061,6 +1086,35 @@ kqs_retail.pos_returns = (function () {
 		}
 		const ctx = get_pos_context();
 
+		if (String(selected_receipt?.name || "").startsWith("OFFLINE-")) {
+			frappe.msgprint(__("Sync this offline sale before processing a return."));
+			return;
+		}
+
+		if (window.kqs_offline && !window.kqs_offline.is_online()) {
+			window.kqs_offline
+				.queue_event("return", {
+					doctype: selected_receipt.doctype,
+					invoice_name: selected_receipt.name,
+					customer,
+					items,
+					pos_profile: ctx.pos_profile,
+					warehouse: ctx.warehouse,
+					refund_type: selected_refund_type,
+					mode_of_payment: is_account_refund() ? null : selected_refund_mode,
+				})
+				.then(() => {
+					frappe.show_alert({
+						indicator: "orange",
+						message: __("Offline return queued. Will sync when online."),
+					});
+					reset_flow();
+					show_step("done");
+				})
+				.catch((e) => frappe.msgprint(__(e.message || "Could not queue return.")));
+			return;
+		}
+
 		frappe.call({
 			method: "kqs_retail.api.returns.submit_return",
 			args: {
@@ -1073,7 +1127,7 @@ kqs_retail.pos_returns = (function () {
 				mode_of_payment: is_account_refund() ? null : selected_refund_mode,
 			},
 			freeze: true,
-			freeze_message: __("Processing returnâ€¦"),
+			freeze_message: __("Processing return…"),
 			callback(r) {
 				if (r.exc) return;
 				const msg = r.message || {};
@@ -1287,12 +1341,44 @@ kqs_retail.pos_returns = (function () {
 			const doctype = $(this).data("doctype");
 			const name = $(this).data("name");
 			const ctx = get_pos_context();
+
+			const open_cached = () =>
+				window.kqs_offline_db.get_receipts().then((rows) => {
+					const row = (rows || []).find((r) => r.name === name);
+					if (!row?.items?.length) {
+						frappe.msgprint(
+							__("Receipt details not in offline cache. Reconnect to open this return.")
+						);
+						return;
+					}
+					render_items({
+						doctype: doctype || "Sales Invoice",
+						name: row.name,
+						customer: row.customer,
+						customer_name: row.customer_name,
+						posting_date: row.posting_date,
+						grand_total: row.grand_total,
+						currency: row.currency,
+						company: row.company,
+						pos_profile: row.pos_profile || ctx.pos_profile,
+						items: row.items,
+					});
+				});
+
+			if (window.kqs_offline && !window.kqs_offline.is_online()) {
+				open_cached();
+				return;
+			}
+
 			frappe.call({
 				method: "kqs_retail.api.returns.get_receipt_for_return",
 				args: { doctype, name, pos_profile: ctx.pos_profile },
 				freeze: true,
 				callback(r) {
-					if (r.exc) return;
+					if (r.exc) {
+						open_cached();
+						return;
+					}
 					render_items(r.message);
 				},
 			});
@@ -2679,6 +2765,30 @@ kqs_retail.pos_customer_account = (function () {
 			.filter((mode) => flt(payment_state.amounts[mode]) > 0)
 			.map((mode) => ({ mode_of_payment: mode, amount: flt(payment_state.amounts[mode]) }));
 
+		if (window.kqs_offline && !window.kqs_offline.is_online()) {
+			window.kqs_offline
+				.queue_event("ar_payment", {
+					customer: selected_customer,
+					company: get_company(),
+					payments: payment_lines,
+					warehouse: get_warehouse(),
+					pos_profile: get_pos_profile(),
+				})
+				.then(() => {
+					const change = cash_change();
+					let message = __("Offline account payment queued. Will sync when online.");
+					if (change > 0) {
+						message = __("Offline payment queued. Change: {0}", [
+							money(change, currency),
+						]);
+					}
+					frappe.show_alert({ message, indicator: "orange" });
+					show_tab("history");
+				})
+				.catch((e) => frappe.msgprint(__(e.message || "Could not queue payment.")));
+			return;
+		}
+
 		frappe.call({
 			method: "kqs_retail.api.customer_account.record_ar_payment",
 			args: {
@@ -3189,18 +3299,38 @@ kqs_retail.pos_layby_hub = (function () {
 
 	function load_agreements(query) {
 		const customer = open_opts.customer || "";
+		const warehouse = get_warehouse();
+		const apply_rows = (rows) => {
+			loaded_agreements = rows || [];
+			render_agreement_list();
+		};
+
+		if (window.kqs_offline && !window.kqs_offline.is_online()) {
+			window.kqs_offline_catalog
+				.filter_laybys(query, warehouse, customer)
+				.then(apply_rows)
+				.catch(() => apply_rows([]));
+			return;
+		}
+
 		frappe.call({
 			method: "kqs_retail.api.search_layby_agreements",
 			args: {
 				query: query || "",
-				warehouse: get_warehouse(),
+				warehouse,
 				customer,
 				limit: 40,
 			},
 			callback(r) {
-				if (r.exc) return;
-				loaded_agreements = r.message || [];
-				render_agreement_list();
+				if (r.exc) {
+					if (window.kqs_offline_catalog?.filter_laybys) {
+						window.kqs_offline_catalog
+							.filter_laybys(query, warehouse, customer)
+							.then(apply_rows);
+					}
+					return;
+				}
+				apply_rows(r.message || []);
 			},
 		});
 	}
@@ -3230,18 +3360,44 @@ kqs_retail.pos_layby_hub = (function () {
 		selected_agreement = name;
 		layout.find(".kqs-layby-agreement-card").removeClass("is-selected");
 		layout.find(`.kqs-layby-agreement-card[data-name="${CSS.escape(name)}"]`).addClass("is-selected");
+
+		const apply_detail = (detail) => {
+			agreement_detail = detail;
+			if (!agreement_detail?.can_operate && agreement_detail?.status !== "Active") {
+				frappe.msgprint(
+					__("This layby is {0} and cannot be changed.", [agreement_detail?.status || ""])
+				);
+				return;
+			}
+			if (!agreement_detail.can_operate) {
+				agreement_detail.can_operate = agreement_detail.status === "Active";
+			}
+			if (go_detail) show_step("detail");
+			else render_main();
+		};
+
+		if (window.kqs_offline && !window.kqs_offline.is_online()) {
+			window.kqs_offline_db.get_layby(name).then((row) => {
+				if (!row) {
+					frappe.msgprint(__("Layby not in offline cache. Reconnect to load it."));
+					return;
+				}
+				apply_detail({
+					...row,
+					can_operate: row.status === "Active",
+					is_manager: false,
+					items: row.items || [],
+				});
+			});
+			return;
+		}
+
 		frappe.call({
 			method: "kqs_retail.api.layby_ops.get_layby_detail",
 			args: { agreement_name: name },
 			callback(r) {
 				if (r.exc) return;
-				agreement_detail = r.message;
-				if (!agreement_detail?.can_operate) {
-					frappe.msgprint(__("This layby is {0} and cannot be changed.", [agreement_detail?.status || ""]));
-					return;
-				}
-				if (go_detail) show_step("detail");
-				else render_main();
+				apply_detail(r.message);
 			},
 		});
 	}
@@ -3733,6 +3889,41 @@ kqs_retail.pos_layby_hub = (function () {
 				]
 			),
 			() => {
+				const cancel_payload = {
+					agreement_name: selected_agreement,
+					reason: cancel_state.reason,
+					refund_type: cancel_state.refund_type || REFUND_TO_ACCOUNT,
+					mode_of_payment: is_cancel_account_refund() ? null : cancel_state.selected_mode,
+					warehouse: get_warehouse(),
+					pos_profile: get_pos_profile(),
+				};
+				const after_cancel = (refund_amount) => {
+					const msg = is_cancel_account_refund()
+						? __("Layby cancelled. {0} credited to customer account.", [
+								money(refund_amount, currency),
+							])
+						: __("Layby cancelled. Refund {0}.", [money(refund_amount, currency)]);
+					done_success(msg);
+					load_agreements(layout.find("#kqs-layby-hub-search").val());
+				};
+				if (window.kqs_offline && !window.kqs_offline.is_online()) {
+					window.kqs_offline
+						.queue_event(
+							"layby_cancel",
+							cancel_payload,
+							async () => {
+								const detail = agreement_detail;
+								if (detail?.items) {
+									await window.kqs_offline_stock.release_layby_items(detail.items);
+								}
+							}
+						)
+						.then(() =>
+							after_cancel(preview.refund_amount)
+						)
+						.catch((e) => frappe.msgprint(__(e.message || "Could not queue cancel.")));
+					return;
+				}
 				frappe.call({
 					method: "kqs_retail.api.layby_ops.submit_layby_cancel",
 					args: {
@@ -3744,11 +3935,7 @@ kqs_retail.pos_layby_hub = (function () {
 					freeze: true,
 					callback(r) {
 						if (r.exc) return;
-						const msg = is_cancel_account_refund()
-							? __("Layby cancelled. {0} credited to customer account.", [money(r.message?.refund_amount, currency)])
-							: __("Layby cancelled. Refund {0}.", [money(r.message?.refund_amount, currency)]);
-						done_success(msg);
-						load_agreements(layout.find("#kqs-layby-hub-search").val());
+						after_cancel(r.message?.refund_amount);
 					},
 				});
 			}
@@ -3782,14 +3969,41 @@ kqs_retail.pos_layby_hub = (function () {
 					[selected_agreement, agreement_detail?.customer_name || "", note]
 				),
 				() => {
+					const run_ok = () => {
+						done_success(__("Layby forfeited."));
+						load_agreements(layout.find("#kqs-layby-hub-search").val());
+					};
+					if (window.kqs_offline && !window.kqs_offline.is_online()) {
+						window.kqs_offline
+							.queue_event(
+								"layby_forfeit",
+								{
+									agreement_name: selected_agreement,
+									note,
+									warehouse: get_warehouse(),
+									pos_profile: get_pos_profile(),
+								},
+								async () => {
+									if (agreement_detail?.items) {
+										await window.kqs_offline_stock.release_layby_items(
+											agreement_detail.items
+										);
+									}
+								}
+							)
+							.then(run_ok)
+							.catch((e) =>
+								frappe.msgprint(__(e.message || "Could not queue forfeit."))
+							);
+						return;
+					}
 					frappe.call({
 						method: "kqs_retail.api.layby_ops.submit_layby_forfeit",
 						args: { agreement_name: selected_agreement, note },
 						freeze: true,
 						callback(r) {
 							if (r.exc) return;
-							done_success(__("Layby forfeited."));
-							load_agreements(layout.find("#kqs-layby-hub-search").val());
+							run_ok();
 						},
 					});
 				}
@@ -4056,6 +4270,33 @@ kqs_retail.pos_layby_hub = (function () {
 			frappe.msgprint(__("Select a payment mode for the overpayment refund."));
 			return;
 		}
+		const amend_payload = {
+			agreement_name: selected_agreement,
+			line_idx: amend_state.line_idx,
+			new_item_code: amend_state.selected_item,
+			manager_approved: amend_state.manager_approved ? 1 : 0,
+			overpayment_action: amend_state.overpayment_action,
+			overpayment_mode_of_payment: amend_state.overpayment_mode,
+			warehouse: get_warehouse(),
+			pos_profile: get_pos_profile(),
+		};
+		const after_amend = (server_msg) => {
+			if (
+				typeof kqs_retail?.point_of_sale?.after_layby_payment_recorded === "function" &&
+				server_msg?.status === "Completed"
+			) {
+				kqs_retail.point_of_sale.after_layby_payment_recorded(server_msg);
+			}
+			select_agreement(selected_agreement, false);
+			done_success(__("Layby item updated."));
+		};
+		if (window.kqs_offline && !window.kqs_offline.is_online()) {
+			window.kqs_offline
+				.queue_event("layby_amend", amend_payload)
+				.then(() => after_amend({ status: "Active" }))
+				.catch((e) => frappe.msgprint(__(e.message || "Could not queue amend.")));
+			return;
+		}
 		frappe.call({
 			method: "kqs_retail.api.layby_ops.submit_layby_amend",
 			args: {
@@ -4069,11 +4310,7 @@ kqs_retail.pos_layby_hub = (function () {
 			freeze: true,
 			callback(r) {
 				if (r.exc) return;
-				if (typeof kqs_retail?.point_of_sale?.after_layby_payment_recorded === "function" && r.message?.status === "Completed") {
-					kqs_retail.point_of_sale.after_layby_payment_recorded(r.message);
-				}
-				select_agreement(selected_agreement, false);
-				done_success(__("Layby item updated."));
+				after_amend(r.message);
 			},
 		});
 	}
@@ -4135,6 +4372,33 @@ kqs_retail.pos_layby_hub = (function () {
 		const lines = payment_state.modes
 			.filter((m) => flt(payment_state.amounts[m]) > 0)
 			.map((m) => ({ mode_of_payment: m, amount: flt(payment_state.amounts[m]) }));
+
+		if (window.kqs_offline && !window.kqs_offline.is_online()) {
+			if (String(selected_agreement || "").startsWith("OFFLAY-")) {
+				frappe.msgprint(
+					__("Sync this offline layby before recording further payments.")
+				);
+				return;
+			}
+			window.kqs_offline
+				.queue_event("layby_payment", {
+					layby_agreement: selected_agreement,
+					payments: lines,
+					amount: total,
+					warehouse: get_warehouse(),
+					pos_profile: get_pos_profile(),
+				})
+				.then(() => {
+					const change = payment_cash_change();
+					let msg = __("Offline payment saved. Will sync when online.");
+					if (change > 0) {
+						msg = __("Offline payment saved. Change: {0}", [money(change, currency)]);
+					}
+					done_success(msg);
+				})
+				.catch((e) => frappe.msgprint(__(e.message || "Could not queue payment.")));
+			return;
+		}
 
 		frappe.call({
 			method: "kqs_retail.api.record_layby_payment",
@@ -4841,6 +5105,8 @@ frappe.provide("kqs_retail.point_of_sale");
 		layby_complete_print_format: "",
 		auto_print_ar_payment_receipts: 1,
 		ar_payment_print_format: "",
+		enable_qz_silent_print: 1,
+		qz_printer_name: "",
 	};
 	const INVOICE_DOCTYPES = ["Sales Invoice", "POS Invoice"];
 
@@ -4879,6 +5145,11 @@ frappe.provide("kqs_retail.point_of_sale");
 	function open_kqs_print_view(doctype, docname, print_format, letterhead) {
 		if (!print_format || !docname) {
 			return false;
+		}
+		const print_fn = window.kqs_print || kqs_retail?.silent_print?.print;
+		if (print_fn) {
+			print_fn(doctype, docname, print_format, letterhead || "");
+			return true;
 		}
 		frappe.utils.print(
 			doctype,
@@ -5062,15 +5333,18 @@ frappe.provide("kqs_retail.point_of_sale");
 				open_kqs_print_view("Layby Agreement", agreement_name, customer_fmt);
 			}
 			if (is_new_layby && reserve_fmt) {
-				setTimeout(() => open_kqs_print_view("Layby Agreement", agreement_name, reserve_fmt), 700);
+				open_kqs_print_view("Layby Agreement", agreement_name, reserve_fmt);
 			}
 			if (is_complete && complete_fmt && sales_invoice) {
-				setTimeout(() => open_kqs_print_view("Sales Invoice", sales_invoice, complete_fmt), 1400);
+				open_kqs_print_view("Sales Invoice", sales_invoice, complete_fmt);
 			}
 		}
 	}
 
 	async function after_layby_created(agreement_name) {
+		if (String(agreement_name || "").startsWith("OFFLAY-")) {
+			return;
+		}
 		await refresh_layby_settings_from_server();
 		show_layby_receipt_dialog(agreement_name, { is_new_layby: true });
 	}
@@ -5087,8 +5361,8 @@ frappe.provide("kqs_retail.point_of_sale");
 
 	function print_ar_payment_receipts(payment_entries, print_format) {
 		if (!print_format || !payment_entries?.length) return;
-		payment_entries.forEach((pe, index) => {
-			setTimeout(() => open_kqs_print_view("Payment Entry", pe, print_format), index * 700);
+		payment_entries.forEach((pe) => {
+			open_kqs_print_view("Payment Entry", pe, print_format);
 		});
 	}
 
@@ -5899,6 +6173,40 @@ frappe.provide("kqs_retail.point_of_sale");
 		PastOrderSummary.prototype._kqs_return_customer_patched = true;
 	}
 
+	function patch_past_order_summary_print() {
+		if (!window.erpnext?.PointOfSale?.PastOrderSummary) return;
+		const PastOrderSummary = erpnext.PointOfSale.PastOrderSummary;
+		if (PastOrderSummary.prototype._kqs_silent_print_patched) return;
+
+		const orig_print_receipt = PastOrderSummary.prototype.print_receipt;
+		PastOrderSummary.prototype.print_receipt = function () {
+			const doc = this.doc;
+			if (!doc?.doctype || !doc?.name) {
+				if (orig_print_receipt) {
+					return orig_print_receipt.call(this);
+				}
+				return;
+			}
+			const frm = this.frm || this.events?.get_frm?.();
+			const print_format =
+				frm?.pos_print_format ||
+				frm?.print_format ||
+				frappe.boot?.sysdefaults?.print_format ||
+				"";
+			const letterhead = frm?.letter_head || "";
+			const print_fn = window.kqs_print || kqs_retail?.silent_print?.print;
+			if (print_fn && print_format) {
+				print_fn(doc.doctype, doc.name, print_format, letterhead);
+				return;
+			}
+			if (orig_print_receipt) {
+				return orig_print_receipt.call(this);
+			}
+			open_kqs_print_view(doc.doctype, doc.name, print_format, letterhead);
+		};
+		PastOrderSummary.prototype._kqs_silent_print_patched = true;
+	}
+
 	function ensure_kqs_pos_instance_patches(pos) {
 		if (!pos) return;
 		bind_kqs_return_button(pos.order_summary);
@@ -5964,6 +6272,40 @@ frappe.provide("kqs_retail.point_of_sale");
 			if (!account_ok) {
 				return;
 			}
+
+			// Offline: queue sale locally (Cash / Card / M-Pesa are record-only MOPs).
+			if (
+				window.kqs_offline &&
+				!window.kqs_offline.is_online() &&
+				!is_return &&
+				!is_return_checkout(frm)
+			) {
+				try {
+					const event = await window.kqs_offline.queue_sale_from_frm(frm);
+					const local_name = "OFFLINE-" + event.client_uuid.slice(0, 8).toUpperCase();
+					pos.toggle_components(false);
+					pos.toggle_submitted_invoice_summary(true);
+					frappe.show_alert({
+						indicator: "orange",
+						message: __(
+							"Offline sale {0} saved. Will sync when online.",
+							[local_name]
+						),
+					});
+					if (typeof pos.make_new_invoice === "function") {
+						setTimeout(() => pos.make_new_invoice(), 400);
+					}
+				} catch (e) {
+					console.error(e);
+					frappe.msgprint({
+						title: __("Offline sale failed"),
+						indicator: "red",
+						message: __(e.message || "Could not save offline sale."),
+					});
+				}
+				return;
+			}
+
 			try {
 				const submitted = await submit_pos_invoice_without_confirm(frm);
 				pos.toggle_components(false);
@@ -6770,18 +7112,56 @@ frappe.provide("kqs_retail.point_of_sale");
 					.filter((mode) => flt(amounts[mode]) > 0)
 					.map((mode) => ({ mode_of_payment: mode, amount: flt(amounts[mode]) }));
 
+				const layby_args = {
+					customer: frm.doc.customer,
+					company: frm.doc.company,
+					warehouse,
+					items: JSON.stringify(cart_lines_from_frm(frm)),
+					deposit_paid: deposit,
+					pos_profile: frm.doc.pos_profile,
+					deposit_percent,
+					payments: JSON.stringify(payment_lines),
+				};
+
+				if (window.kqs_offline && !window.kqs_offline.is_online()) {
+					const items = cart_lines_from_frm(frm);
+					window.kqs_offline
+						.queue_event(
+							"layby_create",
+							{
+								customer: frm.doc.customer,
+								company: frm.doc.company,
+								warehouse,
+								items,
+								deposit_paid: deposit,
+								pos_profile: frm.doc.pos_profile,
+								deposit_percent,
+								payments: payment_lines,
+							},
+							() => window.kqs_offline_stock.apply_layby_reserve(items)
+						)
+						.then((event) => {
+							const local_name =
+								"OFFLAY-" + event.client_uuid.slice(0, 8).toUpperCase();
+							frappe.show_alert({
+								message: __(
+									"Offline layby {0} saved. Will sync when online.",
+									[local_name]
+								),
+								indicator: "orange",
+							});
+							d.hide();
+							after_layby_created(local_name);
+						})
+						.catch((e) => {
+							frappe.msgprint(__(e.message || "Could not save offline layby."));
+						});
+					return;
+				}
+
 				frappe.call({
 					method: "kqs_retail.api.create_layby_from_cart",
-					args: {
-						customer: frm.doc.customer,
-						company: frm.doc.company,
-						warehouse,
-						items: JSON.stringify(cart_lines_from_frm(frm)),
-						deposit_paid: deposit,
-						pos_profile: frm.doc.pos_profile,
-						deposit_percent,
-						payments: JSON.stringify(payment_lines),
-					},
+					args: layby_args,
 					freeze: true,
 					callback(r) {
 						if (!r.exc && r.message) {
@@ -7175,6 +7555,37 @@ frappe.provide("kqs_retail.point_of_sale");
 				const payment_lines = payment_modes
 					.filter((mode) => flt(amounts[mode]) > 0)
 					.map((mode) => ({ mode_of_payment: mode, amount: flt(amounts[mode]) }));
+
+				if (window.kqs_offline && !window.kqs_offline.is_online()) {
+					window.kqs_offline
+						.queue_event("ar_payment", {
+							customer,
+							company: frm.doc.company,
+							payments: payment_lines,
+							warehouse: frm.doc.set_warehouse,
+							pos_profile: frm.doc.pos_profile,
+						})
+						.then(() => {
+							const change = cash_change();
+							let message = __(
+								"Offline account payment queued for {0}. Will sync when online.",
+								[customer_name]
+							);
+							if (change > 0) {
+								message = __(
+									"Offline payment queued for {0}. Change: {1}",
+									[customer_name, format_currency(change, currency)]
+								);
+							}
+							frappe.show_alert({ message, indicator: "orange" });
+							pay_d.hide();
+							if (on_success) on_success();
+						})
+						.catch((e) =>
+							frappe.msgprint(__(e.message || "Could not queue payment."))
+						);
+					return;
+				}
 
 				frappe.call({
 					method: "kqs_retail.api.customer_account.record_ar_payment",
@@ -8312,9 +8723,21 @@ frappe.provide("kqs_retail.point_of_sale");
 		Payment.prototype._kqs_payment_patched = true;
 	}
 
-	function prepare_closing_and_route(pos_opening_entry) {
+	async function prepare_closing_and_route(pos_opening_entry) {
 		if (!pos_opening_entry) {
 			frappe.msgprint(__("No open POS session found."));
+			return;
+		}
+		try {
+			if (window.kqs_offline?.assert_can_close) {
+				await window.kqs_offline.assert_can_close();
+			}
+		} catch (e) {
+			frappe.msgprint({
+				title: __("Cannot close till"),
+				indicator: "red",
+				message: __(e.message || e),
+			});
 			return;
 		}
 		frappe.call({
@@ -8328,6 +8751,24 @@ frappe.provide("kqs_retail.point_of_sale");
 				}
 				frappe.set_route("Form", "POS Closing Entry", r.message.name);
 			},
+		});
+	}
+
+	function kqs_init_offline_cache(pos) {
+		if (!window.kqs_offline?.init_for_pos || !pos) return;
+		const frm = pos.frm;
+		const pos_profile =
+			frm?.doc?.pos_profile || pos.pos_profile || pos.pos_opening?.pos_profile;
+		const warehouse =
+			frm?.doc?.set_warehouse ||
+			(frm?.doc?.items && frm.doc.items[0]?.warehouse) ||
+			"";
+		const opening_entry = pos.pos_opening || pos.pos_opening_entry || "";
+		window.kqs_offline.init_for_pos({
+			pos_profile,
+			warehouse,
+			opening_entry:
+				typeof opening_entry === "object" ? opening_entry.name : opening_entry,
 		});
 	}
 
@@ -8378,6 +8819,7 @@ frappe.provide("kqs_retail.point_of_sale");
 					const data = r.message || {};
 					if (data.action === "resume" && data.opening) {
 						me.prepare_app_defaults(data.opening);
+						frappe.after_ajax(() => kqs_init_offline_cache(me));
 						return;
 					}
 					if (data.action === "close" && data.opening?.name) {
@@ -8631,6 +9073,34 @@ frappe.provide("kqs_retail.point_of_sale");
 	function patch_item_selector() {
 		if (!window.erpnext?.PointOfSale?.ItemSelector) return;
 		const ItemSelector = erpnext.PointOfSale.ItemSelector;
+
+		if (!ItemSelector.prototype._kqs_offline_get_items_patched) {
+			const orig_get_items = ItemSelector.prototype.get_items;
+			ItemSelector.prototype.get_items = function (opts = {}) {
+				const use_cache =
+					window.kqs_offline &&
+					(!window.kqs_offline.is_online() || opts._kqs_force_cache);
+				if (use_cache && window.kqs_offline_catalog?.get_items_from_cache) {
+					return window.kqs_offline_catalog
+						.get_items_from_cache(opts)
+						.then((message) => ({ message }));
+				}
+				return orig_get_items.call(this, opts).catch((err) => {
+					if (window.kqs_offline_catalog?.get_items_from_cache) {
+						frappe.show_alert({
+							indicator: "orange",
+							message: __("Network failed — showing cached catalog."),
+						});
+						return window.kqs_offline_catalog
+							.get_items_from_cache(opts)
+							.then((message) => ({ message }));
+					}
+					throw err;
+				});
+			};
+			ItemSelector.prototype._kqs_offline_get_items_patched = true;
+		}
+
 		if (ItemSelector.prototype._kqs_attr_badges_patched) return;
 
 		const orig_get_item_html = ItemSelector.prototype.get_item_html;
@@ -8686,6 +9156,7 @@ frappe.provide("kqs_retail.point_of_sale");
 		patch_pos_cart();
 		patch_item_selector();
 		patch_past_order_summary_return();
+		patch_past_order_summary_print();
 		ensure_kqs_pos_instance_patches(window.cur_pos);
 	}
 

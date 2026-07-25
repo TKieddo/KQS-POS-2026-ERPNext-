@@ -8,6 +8,13 @@ app_version = "0.1.0"
 
 required_apps = ["erpnext"]
 
+# Desk / login branding (apps tile + browser tab)
+app_logo_url = "/assets/kqs_retail/images/kqs-logo.png"
+website_context = {
+	"favicon": "/assets/kqs_retail/images/favicon.png",
+	"splash_image": "/assets/kqs_retail/images/kqs-logo.png",
+}
+
 add_to_apps_screen = [
 	{
 		"name": "point_of_sale",
@@ -26,10 +33,25 @@ add_to_apps_screen = [
 ]
 
 page_js = {
-	"point-of-sale": "public/js/point_of_sale.js",
+	"point-of-sale": [
+		"public/js/offline/db.js",
+		"public/js/offline/network.js",
+		"public/js/offline/stock_local.js",
+		"public/js/offline/catalog.js",
+		"public/js/offline/sync_pull.js",
+		"public/js/offline/sync_push.js",
+		"public/js/offline/sync_ui.js",
+		"public/js/offline/bridge.js",
+		"public/js/offline/sw_register.js",
+		"public/js/kqs_silent_print.js",
+		"public/js/point_of_sale.js",
+	],
 }
 
-app_include_js = "public/js/cashier_desk_guard.js"
+app_include_js = [
+	"public/js/cashier_desk_guard.js",
+	"public/js/offline/sw_register.js",
+]
 
 override_whitelisted_methods = {
 	"erpnext.selling.page.point_of_sale.point_of_sale.get_items": "kqs_retail.api.pos.get_items",
@@ -55,6 +77,7 @@ doctype_list_js = {
 boot_session = [
 	"kqs_retail.boot.redirect_cashier_to_pos",
 	"kqs_retail.boot.inject_kqs_retail_settings",
+	"kqs_retail.boot.inject_kqs_branding",
 ]
 
 before_request = [
@@ -78,6 +101,8 @@ has_permission = {
 after_migrate = [
 	"kqs_retail.setup.stock_sidebar.ensure_stock_sidebar_links",
 	"kqs_retail.setup.selling_sidebar.ensure_selling_sidebar_link",
+	# Print formats before settings — settings Link fields need them to exist.
+	"kqs_retail.setup.receipt_print_formats.ensure_receipt_print_formats",
 	"kqs_retail.setup.kqs_retail_settings.ensure_kqs_retail_settings",
 	"kqs_retail.setup.product_fields.ensure_product_custom_fields",
 	"kqs_retail.setup.catalog_permissions.ensure",
@@ -90,7 +115,7 @@ after_migrate = [
 	"kqs_retail.setup.invoice_fields.ensure_invoice_custom_fields",
 	"kqs_retail.setup.store_credit.ensure_store_credit_setup",
 	"kqs_retail.setup.pos_profile_fields.ensure_pos_profile_receipt_fields",
-	"kqs_retail.setup.receipt_print_formats.ensure_receipt_print_formats",
+	"kqs_retail.setup.branding.ensure_kqs_branding",
 ]
 
 doc_events = {

@@ -1,7 +1,7 @@
 /* Copyright (c) 2026, KQS — Keep KQS Cashier on Point of Sale, not full Desk. */
 (function () {
 	const POS_PAGE_KEY = "_page:point-of-sale";
-	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 49";
+	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 50";
 
 	function bust_stale_pos_page_cache() {
 		try {

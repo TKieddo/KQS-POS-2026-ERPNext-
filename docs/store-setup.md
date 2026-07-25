@@ -66,9 +66,36 @@ These are linked automatically in **KQS Retail Settings** when those print-forma
 3. Under **KQS Receipt Contact**, set this branch’s **address** (under company name), Facebook, WhatsApp, and website  
 4. Save → reload `/app/point-of-sale`  
 5. Complete a test sale → Print  
-6. In the browser print dialog: select the 80mm thermal, margins **None**, scale **100%**, no headers/footers  
+6. In the browser print dialog (only if QZ is not used): select the 80mm thermal, margins **None**, scale **100%**, no headers/footers  
 
 **Layby / account pay:** formats are chosen under **KQS Retail Settings → Layby Receipts** and **Account Payment Receipts** (auto-filled to Columns-style formats on migrate).
+
+### Silent printing (no Print click)
+
+POS tries **QZ Tray** first, then the **browser** print window. Chrome launched with `--kiosk-printing` makes that browser fallback silent too.
+
+**Primary — QZ Tray (recommended)**
+
+1. On each till PC, install [QZ Tray](https://qz.io/download/) and leave it running.
+2. **KQS Retail Settings → Silent Printing (Till):**
+   - Keep **Enable QZ Silent Print on POS** checked
+   - Set **QZ Printer Name** to the exact thermal name from Windows/macOS (or leave blank for the OS default)
+3. Open POS once and allow the site when QZ asks to connect.
+4. Complete a test sale — the receipt should print with no browser Print dialog.
+
+**Fallback — Chrome kiosk printing**
+
+If QZ is not installed or not running, POS opens the normal browser print path. To avoid clicking Print:
+
+```text
+chrome.exe --kiosk-printing --app=https://YOUR-SITE/app/point-of-sale
+```
+
+(Edge: same flag if supported.) Create a desktop shortcut with that target for cashiers.
+
+**Last resort:** allow pop-ups for the site and click Print in the dialog.
+
+Signing QZ certificates so the “Allow?” prompt never returns after first trust is optional store IT work; v1 works with Frappe’s normal QZ connect.
 
 **Header:** Company name comes from **Company** in ERPNext (`doc.company`) — not hardcoded. Branch address is from the POS Profile.
 

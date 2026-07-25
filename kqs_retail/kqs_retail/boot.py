@@ -33,3 +33,12 @@ def inject_kqs_retail_settings(bootinfo):
 	bootinfo["kqs_retail_settings"] = get_kqs_retail_settings_for_boot()
 	# POS checkout always requires cashier-entered tender (see setup/pos_payments.py).
 	bootinfo["kqs_pos_manual_payment"] = True
+
+
+def inject_kqs_branding(bootinfo):
+	"""Use KQS logo for Desk app chrome and browser tab favicon."""
+	logo = "/assets/kqs_retail/images/kqs-logo.png"
+	favicon = "/assets/kqs_retail/images/favicon.png"
+	bootinfo["app_logo_url"] = logo
+	bootinfo["splash_image"] = logo
+	bootinfo["favicon"] = favicon

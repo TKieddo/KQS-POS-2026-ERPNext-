@@ -20,6 +20,8 @@ DEFAULT_KQS_RETAIL_SETTINGS: dict[str, int | float | str] = {
 	"layby_complete_print_format": "KQS Receipt Columns (SI)",
 	"auto_print_ar_payment_receipts": 1,
 	"ar_payment_print_format": "KQS Account Payment",
+	"enable_qz_silent_print": 1,
+	"qz_printer_name": "",
 	"receipt_tagline": "Finest footware",
 	"receipt_policy_title": "Exchanges within 30 days",
 	"receipt_policy_text": "Receipt required. Exchange or store credit only — no cash refund.",
@@ -56,6 +58,8 @@ def get_kqs_retail_settings() -> dict[str, int | float | str]:
 		"layby_complete_print_format": getattr(doc, "layby_complete_print_format", None) or "",
 		"auto_print_ar_payment_receipts": cint(getattr(doc, "auto_print_ar_payment_receipts", 1)),
 		"ar_payment_print_format": getattr(doc, "ar_payment_print_format", None) or "",
+		"enable_qz_silent_print": cint(getattr(doc, "enable_qz_silent_print", 1)),
+		"qz_printer_name": getattr(doc, "qz_printer_name", None) or "",
 		"receipt_tagline": getattr(doc, "receipt_tagline", None)
 		or DEFAULT_KQS_RETAIL_SETTINGS["receipt_tagline"],
 		"receipt_policy_title": getattr(doc, "receipt_policy_title", None)
@@ -88,4 +92,6 @@ def get_kqs_retail_settings_for_boot() -> dict[str, int | float | str]:
 		"layby_complete_print_format": settings["layby_complete_print_format"],
 		"auto_print_ar_payment_receipts": settings["auto_print_ar_payment_receipts"],
 		"ar_payment_print_format": settings["ar_payment_print_format"],
+		"enable_qz_silent_print": settings["enable_qz_silent_print"],
+		"qz_printer_name": settings["qz_printer_name"],
 	}

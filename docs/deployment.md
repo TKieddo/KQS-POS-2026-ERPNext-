@@ -96,7 +96,11 @@ If the app is a monorepo subdirectory (this repo), pull the monorepo on the VPS 
 
 ## Tablet testing checklist
 
+POS supports **short offline** on a **single till** (cached catalog + outbox). See [offline-local-cache.md](offline-local-cache.md). Prefer stable store Wi-Fi; use offline for blips only.
+
 - [ ] Login as a real cashier user from store Wi-Fi → lands on POS
+- [ ] Offline smoke: airplane mode → cash/card sale → reconnect → sync (Offline Sync Log)
+- [ ] Cannot close till with pending offline outbox
 - [ ] Normal sale + return via ERPNext POS
 - [ ] Create layby with deposit (Layby button on checkout)
 - [ ] Layby Lookup & Pay from POS menu

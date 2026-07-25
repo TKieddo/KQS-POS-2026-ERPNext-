@@ -139,43 +139,60 @@ function kqs_prepare_then_submit(frm) {
 		return;
 	}
 
-	const payment_reconciliation = kqs_payment_reconciliation_payload(frm);
+	const run_prepare = () => {
+		const payment_reconciliation = kqs_payment_reconciliation_payload(frm);
 
-	frappe.call({
-		method: "kqs_retail.api.pos_closing.prepare_closing_entry",
-		args: { pos_opening_entry: opening },
-		freeze: true,
-		freeze_message: __("Preparing POS closing..."),
-		callback(r) {
-			if (r.exc || !r.message?.name) {
-				return;
-			}
-			const name = r.message.name;
-			frappe.call({
-				method: "kqs_retail.api.pos_closing.submit_closing_entry",
-				args: {
-					name,
-					payment_reconciliation: JSON.stringify(payment_reconciliation),
-				},
-				freeze: true,
-				freeze_message: __("Submitting POS closing..."),
-				callback(sr) {
-					if (sr.exc) {
+		frappe.call({
+			method: "kqs_retail.api.pos_closing.prepare_closing_entry",
+			args: { pos_opening_entry: opening },
+			freeze: true,
+			freeze_message: __("Preparing POS closing..."),
+			callback(r) {
+				if (r.exc || !r.message?.name) {
+					return;
+				}
+				const name = r.message.name;
+				frappe.call({
+					method: "kqs_retail.api.pos_closing.submit_closing_entry",
+					args: {
+						name,
+						payment_reconciliation: JSON.stringify(payment_reconciliation),
+					},
+					freeze: true,
+					freeze_message: __("Submitting POS closing..."),
+					callback(sr) {
+						if (sr.exc) {
+							frappe.set_route("Form", "POS Closing Entry", name);
+							return;
+						}
+						frappe.show_alert(
+							{
+								message: __("POS closed successfully."),
+								indicator: "green",
+							},
+							10
+						);
 						frappe.set_route("Form", "POS Closing Entry", name);
-						return;
-					}
-					frappe.show_alert(
-						{
-							message: __("POS closed successfully."),
-							indicator: "green",
-						},
-						10
-					);
-					frappe.set_route("Form", "POS Closing Entry", name);
-				},
+					},
+				});
+			},
+		});
+	};
+
+	if (window.kqs_offline?.assert_can_close) {
+		window.kqs_offline
+			.assert_can_close()
+			.then(run_prepare)
+			.catch((e) => {
+				frappe.msgprint({
+					title: __("Cannot close till"),
+					indicator: "red",
+					message: __(e.message || e),
+				});
 			});
-		},
-	});
+		return;
+	}
+	run_prepare();
 }
 
 function kqs_submit_closing_entry(frm) {
@@ -192,36 +209,53 @@ function kqs_submit_closing_entry(frm) {
 		return;
 	}
 
-	frappe.call({
-		method: "kqs_retail.api.pos_closing.submit_closing_entry",
-		args: {
-			name: frm.doc.name,
-			payment_reconciliation: JSON.stringify(kqs_payment_reconciliation_payload(frm)),
-		},
-		freeze: true,
-		freeze_message: __("Submitting POS closing..."),
-		callback(r) {
-			if (r.exc) {
+	const do_submit = () => {
+		frappe.call({
+			method: "kqs_retail.api.pos_closing.submit_closing_entry",
+			args: {
+				name: frm.doc.name,
+				payment_reconciliation: JSON.stringify(kqs_payment_reconciliation_payload(frm)),
+			},
+			freeze: true,
+			freeze_message: __("Submitting POS closing..."),
+			callback(r) {
+				if (r.exc) {
+					kqs_load_closing_blockers(frm);
+					frm.reload_doc();
+					return;
+				}
+				frappe.show_alert(
+					{
+						message: __("POS closed successfully."),
+						indicator: "green",
+					},
+					10
+				);
+				frm.reload_doc().then(() => {
+					kqs_setup_cashier_closing_actions(frm);
+				});
+			},
+			error() {
 				kqs_load_closing_blockers(frm);
 				frm.reload_doc();
-				return;
-			}
-			frappe.show_alert(
-				{
-					message: __("POS closed successfully."),
-					indicator: "green",
-				},
-				10
-			);
-			frm.reload_doc().then(() => {
-				kqs_setup_cashier_closing_actions(frm);
+			},
+		});
+	};
+
+	if (window.kqs_offline?.assert_can_close) {
+		window.kqs_offline
+			.assert_can_close()
+			.then(do_submit)
+			.catch((e) => {
+				frappe.msgprint({
+					title: __("Cannot close till"),
+					indicator: "red",
+					message: __(e.message || e),
+				});
 			});
-		},
-		error() {
-			kqs_load_closing_blockers(frm);
-			frm.reload_doc();
-		},
-	});
+		return;
+	}
+	do_submit();
 }
 
 function kqs_show_closing_blockers_dialog(blockers) {

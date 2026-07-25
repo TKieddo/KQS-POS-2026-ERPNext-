@@ -118,14 +118,14 @@ Policy reference: [layby-rules.md](layby-rules.md)
 | [x] | Custom layout (logo, footer, terms) | *(KQS)* Thermal formats; policy in KQS Retail Settings; address on POS Profile |
 | [ ] | Letter head / company logo | *(Configure)* Setup → Letter Head (not used on thermal formats) |
 | [x] | Thermal paper width (e.g. 80mm) | *(KQS)* 72mm printable CSS in receipt formats |
-| [ ] | Direct thermal print (QZ Tray, no preview) | *(ERPNext)* Optional |
+| [x] | Direct thermal print (QZ Tray, no preview) | *(KQS)* QZ HTML silent print → browser fallback; see [store-setup.md](store-setup.md#silent-printing-no-print-click) |
 | [ ] | Cash drawer open on sale | *(ERPNext)* Optional via QZ / printer |
 | [x] | Layby — customer receipt | *(KQS)* **KQS Layby Customer** (Columns style) |
 | [x] | Layby — store / reserve slip | *(KQS)* **KQS Layby Reserve** |
 | [x] | Layby — completion receipt | *(KQS)* **KQS Receipt Columns (SI)** |
 | [x] | Auto-print layby receipts at till | *(KQS)* After create / pay / complete |
 
-**Where to configure:** Retail → POS Profile (sale receipt) · Setup → Print Format · KQS Retail Settings → Layby Receipts · see [store-setup.md](store-setup.md#thermal-sale-receipts-80mm)
+**Where to configure:** Retail → POS Profile (sale receipt) · Setup → Print Format · KQS Retail Settings → Layby Receipts / Silent Printing · see [store-setup.md](store-setup.md#thermal-sale-receipts-80mm)
 ---
 
 ## 6. Inventory & catalog (manager)
@@ -199,9 +199,9 @@ Setup reference: [store-setup.md](store-setup.md)
 | Done | Feature | Notes |
 |:----:|---------|-------|
 | [ ] | Tablet or PC browser till tested | Bookmark `/app/point-of-sale` |
-| [ ] | Receipt printer tested on real paper | Try Classic / Columns / Hybrid on POS Profile; allow pop-ups if blocked |
+| [ ] | Receipt printer tested on real paper | QZ Tray preferred; else Chrome `--kiosk-printing`; allow pop-ups as last resort |
 | [ ] | Barcode scanner tested | USB scanner + barcodes on items |
-| [ ] | Store Wi-Fi stable for tablets | See [deployment.md](deployment.md) |
+| [ ] | Store Wi-Fi stable for tablets | Prefer stable Wi‑Fi; short offline OK — see [offline-local-cache.md](offline-local-cache.md) |
 | [ ] | Production server + daily backups | `bench --site all backup --with-files` |
 | [ ] | Cashier training / standard procedures | Operational |
 | [ ] | Smoke test passed | `scripts\run-smoke-test.bat` |
@@ -219,7 +219,7 @@ Setup reference: [store-setup.md](store-setup.md)
 | [ ] | SMS receipt or payment reminder | |
 | [ ] | Integrated card terminal | |
 | [ ] | Customer-facing display | |
-| [ ] | Offline mode | ERPNext requires network |
+| [ ] | Offline mode | Single till, short outages — see [offline-local-cache.md](offline-local-cache.md) |
 
 ---
 

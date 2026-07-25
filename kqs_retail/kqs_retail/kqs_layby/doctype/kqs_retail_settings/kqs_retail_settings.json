@@ -23,6 +23,9 @@
   "section_break_ar_receipts",
   "auto_print_ar_payment_receipts",
   "ar_payment_print_format",
+  "section_break_silent_print",
+  "enable_qz_silent_print",
+  "qz_printer_name",
   "section_break_sale_receipt",
   "receipt_tagline",
   "receipt_policy_title",
@@ -164,6 +167,24 @@
    "fieldtype": "Link",
    "label": "Account Payment Print Format",
    "options": "Print Format"
+  },
+  {
+   "fieldname": "section_break_silent_print",
+   "fieldtype": "Section Break",
+   "label": "Silent Printing (Till)"
+  },
+  {
+   "default": "1",
+   "description": "Send receipts to the thermal via QZ Tray with no browser Print dialog. If QZ is not running, falls back to the browser print window (silent when Chrome is launched with --kiosk-printing).",
+   "fieldname": "enable_qz_silent_print",
+   "fieldtype": "Check",
+   "label": "Enable QZ Silent Print on POS"
+  },
+  {
+   "description": "Exact Windows/macOS printer name as shown in QZ Tray. Leave blank to use the OS default printer (and remember the last successful name on this till).",
+   "fieldname": "qz_printer_name",
+   "fieldtype": "Data",
+   "label": "QZ Printer Name"
   },
   {
    "fieldname": "section_break_sale_receipt",
