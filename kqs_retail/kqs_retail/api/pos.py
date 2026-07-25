@@ -35,15 +35,26 @@ def check_opening_entry(user: str | None = None) -> list[dict]:
 	"""Open tills for this cashier — match by status=Open (not empty closing link).
 
 	ERPNext's stock filter on empty ``pos_closing_entry`` can miss valid Open
-	entries, which wrongly shows the Create Opening dialog after a browser reload.
+	entries, which wrongly shows the Create Opening dialog after a browser reload
+	or when the same cashier signs in on a second phone/tablet.
 	"""
 	user = user or frappe.session.user
-	return frappe.db.get_all(
+	rows = frappe.db.get_all(
 		"POS Opening Entry",
 		filters={"user": user, "status": "Open", "docstatus": 1},
 		fields=["name", "company", "pos_profile", "period_start_date"],
 		order_by="period_start_date desc",
 	)
+	if rows:
+		return rows
+	# Fallback: same buggy ERPNext filter some sites still rely on, then keep only Open.
+	legacy = frappe.db.get_all(
+		"POS Opening Entry",
+		filters={"user": user, "pos_closing_entry": ["in", ["", None]], "docstatus": 1},
+		fields=["name", "company", "pos_profile", "period_start_date", "status"],
+		order_by="period_start_date desc",
+	)
+	return [r for r in legacy if (r.get("status") or "Open") == "Open"]
 
 
 def _opening_is_outdated(period_start_date) -> bool:

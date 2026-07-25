@@ -1,7 +1,7 @@
 /* Copyright (c) 2026, KQS — Keep KQS Cashier on Point of Sale, not full Desk. */
 (function () {
 	const POS_PAGE_KEY = "_page:point-of-sale";
-	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 50";
+	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 51";
 
 	function bust_stale_pos_page_cache() {
 		try {
@@ -71,6 +71,8 @@
 					return;
 				}
 				const data = r.message || {};
+				const title_s = String(title || "");
+				// Same cashier, second phone/tablet: jump into the live till.
 				if (data.action === "resume" && data.opening?.name) {
 					frappe.show_alert(
 						{
@@ -94,18 +96,25 @@
 					kqs_prepare_and_open_closing(data.opening.name);
 					return;
 				}
-				// Someone else still has this profile open (or no session for this user).
-				if (String(title || "").includes("POS Opening Entry Exists")) {
+				// Profile already open (often same shared cashier after a race) → close or pick.
+				if (
+					title_s.includes("POS Opening Entry Exists") ||
+					title_s.includes("Cannot Assign Cashier")
+				) {
 					frappe.show_alert(
 						{
 							message: __(
-								"This till is already open. Close the open session, then try again."
+								"This till is already open. Opening the close session screen…"
 							),
 							indicator: "orange",
 						},
 						6
 					);
-					kqs_open_pos_closing();
+					if (data.opening?.name) {
+						kqs_prepare_and_open_closing(data.opening.name);
+					} else {
+						kqs_open_pos_closing();
+					}
 					return;
 				}
 				kqs_show_outdated_opening_dialog();

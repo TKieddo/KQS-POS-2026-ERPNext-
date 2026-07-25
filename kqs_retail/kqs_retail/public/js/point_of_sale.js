@@ -8803,6 +8803,81 @@ frappe.provide("kqs_retail.point_of_sale");
 		d.show();
 	}
 
+	function apply_opening_resolve_result(controller, data) {
+		const me = controller;
+		data = data || {};
+		if (data.action === "resume" && data.opening) {
+			frappe.show_alert(
+				{
+					message: __("Resuming your open till…"),
+					indicator: "blue",
+				},
+				3
+			);
+			me.prepare_app_defaults(data.opening);
+			frappe.after_ajax(() => kqs_init_offline_cache(me));
+			return true;
+		}
+		if (data.action === "close" && data.opening?.name) {
+			frappe.show_alert(
+				{
+					message: __("Till was opened on a previous day — closing now."),
+					indicator: "orange",
+				},
+				6
+			);
+			prepare_closing_and_route(data.opening.name);
+			return true;
+		}
+		if (data.action === "blocked" && data.opening) {
+			show_till_blocked_dialog(data);
+			return true;
+		}
+		return false;
+	}
+
+	function resolve_opening_then(controller, on_create) {
+		return frappe
+			.call({
+				method: "kqs_retail.api.pos.resolve_pos_opening_entry",
+				args: { user: frappe.session.user },
+			})
+			.then((r) => {
+				const data = r.message || {};
+				if (apply_opening_resolve_result(controller, data)) {
+					return;
+				}
+				if (data.default_pos_profile) {
+					controller._kqs_default_pos_profile = data.default_pos_profile;
+				}
+				if (data.other_open_profiles?.length) {
+					const names = data.other_open_profiles
+						.map((row) => `${row.pos_profile} (${row.user})`)
+						.join(", ");
+					frappe.show_alert(
+						{
+							message: __("Other tills already open: {0}", [names]),
+							indicator: "orange",
+						},
+						8
+					);
+				}
+				on_create?.(data);
+			})
+			.catch(() => {
+				controller.fetch_opening_entry().then((r) => {
+					if (r.message?.length) {
+						apply_opening_resolve_result(controller, {
+							action: "resume",
+							opening: r.message[0],
+						});
+					} else {
+						on_create?.({});
+					}
+				});
+			});
+	}
+
 	function patch_pos_opening_session_flow() {
 		if (!window.erpnext?.PointOfSale?.Controller) return;
 		const Controller = erpnext.PointOfSale.Controller;
@@ -8810,67 +8885,27 @@ frappe.provide("kqs_retail.point_of_sale");
 
 		Controller.prototype.check_opening_entry = function () {
 			const me = this;
-			frappe
-				.call({
-					method: "kqs_retail.api.pos.resolve_pos_opening_entry",
-					args: { user: frappe.session.user },
-				})
-				.then((r) => {
-					const data = r.message || {};
-					if (data.action === "resume" && data.opening) {
-						me.prepare_app_defaults(data.opening);
-						frappe.after_ajax(() => kqs_init_offline_cache(me));
-						return;
-					}
-					if (data.action === "close" && data.opening?.name) {
-						frappe.show_alert(
-							{
-								message: __("Till was opened on a previous day — closing now."),
-								indicator: "orange",
-							},
-							6
-						);
-						prepare_closing_and_route(data.opening.name);
-						return;
-					}
-					if (data.action === "blocked" && data.opening) {
-						show_till_blocked_dialog(data);
-						return;
-					}
-					if (data.default_pos_profile) {
-						me._kqs_default_pos_profile = data.default_pos_profile;
-					}
-					if (data.other_open_profiles?.length) {
-						const names = data.other_open_profiles
-							.map((row) => `${row.pos_profile} (${row.user})`)
-							.join(", ");
-						frappe.show_alert(
-							{
-								message: __("Other tills already open: {0}", [names]),
-								indicator: "orange",
-							},
-							8
-						);
-					}
-					me.create_opening_voucher();
-					if (me._kqs_default_pos_profile) {
-						frappe.after_ajax(() => {
-							const dlg = cur_dialog;
-							if (dlg?.fields_dict?.pos_profile) {
-								dlg.set_value("pos_profile", me._kqs_default_pos_profile);
-							}
-						});
-					}
-				})
-				.catch(() => {
-					me.fetch_opening_entry().then((r) => {
-						if (r.message?.length) {
-							me.prepare_app_defaults(r.message[0]);
-						} else {
-							me.create_opening_voucher();
+			resolve_opening_then(me, () => {
+				me.create_opening_voucher();
+			});
+		};
+
+		const orig_create_opening_voucher = Controller.prototype.create_opening_voucher;
+		Controller.prototype.create_opening_voucher = function () {
+			const me = this;
+			// Second device / refresh can race past check_opening_entry — never show
+			// Create Opening when this cashier already has an Open till.
+			resolve_opening_then(me, () => {
+				orig_create_opening_voucher.call(me);
+				if (me._kqs_default_pos_profile) {
+					frappe.after_ajax(() => {
+						const dlg = cur_dialog;
+						if (dlg?.fields_dict?.pos_profile) {
+							dlg.set_value("pos_profile", me._kqs_default_pos_profile);
 						}
 					});
-				});
+				}
+			});
 		};
 
 		Controller.prototype.check_outdated_pos_opening_entry = function () {
@@ -8904,19 +8939,22 @@ frappe.provide("kqs_retail.point_of_sale");
 		page._kqs_opening_page_wrapped = true;
 		const orig = page.on_page_load;
 		page.on_page_load = function (wrapper) {
-			// Register patches before ERPNext's require callback creates Controller.
+			// Patch Controller BEFORE ERPNext constructs it (constructor calls check_opening_entry).
 			frappe.require("point-of-sale.bundle.js", () => {
 				patch_pos_opening_session_flow();
 				apply_all_kqs_pos_patches();
+				orig.call(this, wrapper);
 			});
-			return orig.call(this, wrapper);
 		};
 		const orig_refresh = page.refresh;
 		if (orig_refresh && !page._kqs_opening_refresh_wrapped) {
 			page._kqs_opening_refresh_wrapped = true;
 			page.refresh = function (wrapper) {
-				patch_pos_opening_session_flow();
-				return orig_refresh.call(this, wrapper);
+				frappe.require("point-of-sale.bundle.js", () => {
+					patch_pos_opening_session_flow();
+					apply_all_kqs_pos_patches();
+					orig_refresh.call(this, wrapper);
+				});
 			};
 		}
 		return true;
