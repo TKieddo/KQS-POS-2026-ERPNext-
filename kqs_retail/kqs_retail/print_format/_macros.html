@@ -1,14 +1,11 @@
 {# Shared helpers for KQS thermal receipts — prepended by setup #}
 {%- macro kqs_money(amount) -%}
-{%- set _cur = doc.currency if doc.currency else none -%}
-{%- if not _cur and doc.company -%}
-	{%- set _cur = frappe.db.get_value("Company", doc.company, "default_currency") -%}
-{%- endif -%}
-{{- frappe.utils.fmt_money(amount or 0, currency=_cur) -}}
+{#- Compact amount for 80mm: no currency letter (L/M) — saves the clipped digit. -#}
+{{- "{0:,.2f}".format(frappe.utils.flt(amount or 0)) -}}
 {%- endmacro -%}
 
 {%- macro kqs_logo() -%}
-{%- set _logo = frappe.utils.get_url("/assets/kqs_retail/images/kqs-receipt-logo.png") -%}
+{%- set _logo = frappe.utils.get_url("/assets/kqs_retail/images/kqs-logo.png") -%}
 <img class="kqs-logo" src="{{ _logo }}" alt="KQS" />
 {%- endmacro -%}
 

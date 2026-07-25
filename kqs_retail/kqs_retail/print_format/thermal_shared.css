@@ -1,21 +1,22 @@
-/* KQS 80mm thermal receipts — high contrast, left-aligned, safe right edge */
+/* KQS 80mm thermal — fit printable area with equal side margins (QZ-safe). */
 @page {
 	size: 80mm auto;
 	margin: 0;
 }
 
 .kqs-rcpt {
-	/* Keep inside typical 80mm printable width (avoid right-edge clip). */
-	width: 68mm;
-	max-width: 68mm;
-	margin: 0;
-	padding: 1mm 3.5mm 4mm 0.5mm;
+	/* ~72mm printable on 80mm paper; keep clear gutters both sides. */
+	width: 60mm;
+	max-width: 60mm;
+	margin: 0 auto;
+	padding: 1.5mm 2mm 4mm;
 	color: #000 !important;
 	background: #fff;
 	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
-	font-size: 10.5pt;
+	font-size: 9.5pt;
 	font-weight: 800;
-	line-height: 1.28;
+	line-height: 1.25;
+	overflow: hidden;
 	-webkit-print-color-adjust: exact;
 	print-color-adjust: exact;
 }
@@ -24,13 +25,17 @@
 	box-sizing: border-box;
 	color: #000 !important;
 	opacity: 1 !important;
+	max-width: 100%;
 }
 
 .kqs-logo {
 	display: block;
-	width: 100%;
+	width: auto;
+	max-width: 36mm;
+	max-height: 14mm;
 	height: auto;
-	margin: 0 0 2mm;
+	margin: 0 auto 2mm;
+	object-fit: contain;
 }
 
 .kqs-center {
@@ -38,18 +43,18 @@
 }
 
 .kqs-store-name {
-	font-size: 13pt;
+	font-size: 12pt;
 	font-weight: 900;
 	margin: 0 0 1mm;
 }
 
-/* Address must print dark on thermal — avoid light/thin weights. */
 .kqs-muted-line {
 	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
-	font-size: 10pt;
-	font-weight: 800;
+	font-size: 9pt;
+	font-weight: 900;
 	margin: 0;
 	line-height: 1.3;
+	word-break: break-word;
 }
 
 .kqs-rule {
@@ -68,34 +73,41 @@
 	display: flex;
 	justify-content: space-between;
 	align-items: flex-start;
-	gap: 2mm;
-	margin: 0.8mm 0;
+	gap: 1.5mm;
+	margin: 0.7mm 0;
+	width: 100%;
+}
+
+.kqs-row > span:first-child {
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow-wrap: anywhere;
 }
 
 .kqs-row > span:last-child {
-	flex-shrink: 0;
+	flex: 0 0 auto;
 	text-align: right;
 	white-space: nowrap;
-	padding-left: 1mm;
+	font-variant-numeric: tabular-nums;
 }
 
 .kqs-meta {
 	display: flex;
 	justify-content: space-between;
 	gap: 2mm;
-	font-size: 10pt;
+	font-size: 9pt;
 	margin: 1mm 0 2mm;
 }
 
 .kqs-meta-stack {
-	font-size: 10pt;
+	font-size: 9.5pt;
 	font-weight: 800;
 	margin: 2mm 0;
 	line-height: 1.35;
 }
 
 .kqs-meta-stack div {
-	margin: 0.4mm 0;
+	margin: 0.35mm 0;
 }
 
 .kqs-meta .col {
@@ -107,22 +119,22 @@
 }
 
 .kqs-total-big {
-	font-size: 15pt;
+	font-size: 13pt;
 	font-weight: 900;
 	margin: 2mm 0;
 }
 
 .kqs-total-big .label {
-	font-size: 12pt;
+	font-size: 11pt;
 	font-weight: 900;
 }
 
 .kqs-bar {
 	background: #000 !important;
 	color: #fff !important;
-	padding: 1.8mm 2mm;
+	padding: 1.5mm 1.5mm;
 	font-weight: 800;
-	font-size: 11pt;
+	font-size: 10pt;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
@@ -140,28 +152,27 @@
 }
 
 .kqs-item-name {
-	font-size: 10.5pt;
+	font-size: 9.5pt;
 	font-weight: 900;
-	word-break: break-word;
+	overflow-wrap: anywhere;
 }
 
 .kqs-item-sub {
 	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
-	font-size: 9pt;
-	font-weight: 700;
-	margin-top: 0.4mm;
-	padding-left: 1mm;
-	word-break: break-word;
+	font-size: 8pt;
+	font-weight: 800;
+	margin-top: 0.3mm;
+	overflow-wrap: anywhere;
 }
 
-/* Wider Price column so "L 1,200.00" is not clipped. */
+/* Price column wide enough for "1,200.00" without currency letter. */
 .kqs-cols-head,
 .kqs-cols-row {
 	display: grid;
-	grid-template-columns: 5mm minmax(0, 1fr) 8mm 22mm;
+	grid-template-columns: 4mm minmax(0, 1fr) 7mm 16mm;
 	gap: 1mm;
 	align-items: start;
-	font-size: 9.5pt;
+	font-size: 9pt;
 	width: 100%;
 }
 
@@ -173,7 +184,7 @@
 }
 
 .kqs-cols-row {
-	margin: 1.5mm 0;
+	margin: 1.2mm 0;
 }
 
 .kqs-cols-row .qty,
@@ -182,12 +193,7 @@
 .kqs-cols-head .price {
 	text-align: right;
 	white-space: nowrap;
-}
-
-.kqs-cols-row .price,
-.kqs-cols-head .price {
-	overflow: visible;
-	padding-right: 0.5mm;
+	font-variant-numeric: tabular-nums;
 }
 
 .kqs-cols-row .num,
@@ -195,36 +201,36 @@
 	text-align: left;
 }
 
+/* Do not use Courier for the whole slip — it is too wide on 80mm. */
 .kqs-mono {
-	/* Keep numbers readable; body text still uses bold Arial where overridden. */
-	font-family: "Courier New", Courier, monospace;
+	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
 	font-weight: 800;
-	letter-spacing: -0.03em;
+	letter-spacing: 0;
 }
 
 .kqs-totals .kqs-row {
-	font-size: 10.5pt;
+	font-size: 10pt;
 	font-weight: 800;
 }
 
 .kqs-grand {
-	font-size: 14pt;
+	font-size: 12pt;
 	font-weight: 900;
-	margin-top: 1.5mm;
+	margin-top: 1.2mm;
 }
 
 .kqs-script {
 	font-family: Georgia, "Times New Roman", serif;
 	font-style: italic;
 	font-weight: 800;
-	font-size: 12pt;
+	font-size: 11pt;
 	text-align: center;
-	margin: 3mm 0 2mm;
+	margin: 2.5mm 0 2mm;
 }
 
 .kqs-policy-title {
 	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
-	font-size: 11pt;
+	font-size: 10pt;
 	font-weight: 900;
 	text-align: center;
 	text-transform: uppercase;
@@ -233,47 +239,56 @@
 
 .kqs-policy {
 	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
-	font-size: 9.5pt;
-	font-weight: 800;
+	font-size: 8.5pt;
+	font-weight: 900;
 	text-align: center;
 	margin: 0 0 2mm;
 	line-height: 1.35;
+	overflow-wrap: anywhere;
+	padding: 0 0.5mm;
 }
 
 .kqs-thanks {
 	text-align: center;
 	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
-	font-size: 9.5pt;
+	font-size: 9pt;
 	font-weight: 900;
 	text-transform: uppercase;
 	margin: 1mm 0;
-	letter-spacing: -0.02em;
+	overflow-wrap: anywhere;
 }
 
 .kqs-footer-line {
-	font-size: 9pt;
+	font-size: 8.5pt;
 	font-weight: 800;
 	margin: 1mm 0;
 }
 
 .kqs-social {
 	margin-top: 1mm;
+	padding: 0 0.5mm;
 }
 
 .kqs-social-line {
 	display: flex;
 	align-items: center;
-	gap: 2mm;
+	gap: 1.5mm;
 	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
-	font-size: 9.5pt;
+	font-size: 8.5pt;
 	font-weight: 800;
-	margin: 1.2mm 0;
+	margin: 1mm 0;
+	min-width: 0;
+}
+
+.kqs-social-line span {
+	min-width: 0;
+	overflow-wrap: anywhere;
 }
 
 .kqs-ico {
-	width: 3.2mm;
-	height: 3.2mm;
-	min-width: 3.2mm;
+	width: 3mm;
+	height: 3mm;
+	min-width: 3mm;
 	flex-shrink: 0;
 	display: inline-block;
 	vertical-align: middle;

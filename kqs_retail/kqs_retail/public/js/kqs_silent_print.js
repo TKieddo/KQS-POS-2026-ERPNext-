@@ -4,11 +4,11 @@ frappe.provide("kqs_retail.silent_print");
 (function () {
 	const STORAGE_KEY = "kqs_qz_printer_name";
 	/**
-	 * Physical 80mm roll ≈ 72mm printable. Stay slightly under so QZ raster
-	 * does not clip the right edge (prices / "Price" / thank-you line).
+	 * Match content width — do NOT oversize then scale (that clips both sides).
+	 * Content CSS is 60mm; page a hair wider for printer gutters.
 	 */
-	const PAGE_WIDTH_MM = 70;
-	const LOGO_ASSET = "/assets/kqs_retail/images/kqs-receipt-logo.png";
+	const PAGE_WIDTH_MM = 64;
+	const LOGO_ASSET = "/assets/kqs_retail/images/kqs-logo.png";
 	let print_queue = Promise.resolve();
 	let qz_security_ready = null;
 	let unsigned_hint_shown = false;
@@ -20,6 +20,7 @@ frappe.provide("kqs_retail.silent_print");
 			padding: 0 !important;
 			width: ${PAGE_WIDTH_MM}mm !important;
 			max-width: ${PAGE_WIDTH_MM}mm !important;
+			overflow: hidden !important;
 			background: #fff !important;
 			color: #000 !important;
 			-webkit-print-color-adjust: exact !important;
@@ -28,27 +29,35 @@ frappe.provide("kqs_retail.silent_print");
 			font-smooth: never !important;
 		}
 		.print-format, .print-format-gutter, .page-break {
-			margin: 0 !important;
+			margin: 0 auto !important;
 			padding: 0 !important;
-			width: ${PAGE_WIDTH_MM}mm !important;
-			max-width: ${PAGE_WIDTH_MM}mm !important;
+			width: 60mm !important;
+			max-width: 60mm !important;
+			overflow: hidden !important;
 		}
 		.kqs-rcpt {
-			width: 66mm !important;
-			max-width: 66mm !important;
-			margin: 0 !important;
-			padding: 1mm 2.5mm 3mm 0.5mm !important;
+			width: 60mm !important;
+			max-width: 60mm !important;
+			margin: 0 auto !important;
+			padding: 1.5mm 2mm 4mm !important;
+			overflow: hidden !important;
+			font-family: Arial, Helvetica, sans-serif !important;
 			color: #000 !important;
 		}
 		.kqs-rcpt, .kqs-rcpt * {
 			color: #000 !important;
 			opacity: 1 !important;
+			font-family: Arial, Helvetica, sans-serif !important;
+			max-width: 100% !important;
 		}
 		.kqs-logo {
 			display: block !important;
-			width: 100% !important;
-			max-width: 66mm !important;
+			width: auto !important;
+			max-width: 36mm !important;
+			max-height: 14mm !important;
 			height: auto !important;
+			margin: 0 auto 2mm !important;
+			object-fit: contain !important;
 		}
 		.kqs-muted-line,
 		.kqs-policy,
@@ -57,21 +66,20 @@ frappe.provide("kqs_retail.silent_print");
 		.kqs-thanks,
 		.kqs-social-line,
 		.kqs-footer-line {
-			font-family: Arial, Helvetica, sans-serif !important;
 			font-weight: 900 !important;
 			color: #000 !important;
 			opacity: 1 !important;
-			-webkit-text-stroke: 0.2px #000;
+			-webkit-text-stroke: 0.25px #000;
 		}
-		.kqs-muted-line { font-size: 10pt !important; }
-		.kqs-policy { font-size: 9.5pt !important; line-height: 1.35 !important; }
+		.kqs-muted-line { font-size: 9pt !important; }
+		.kqs-policy { font-size: 8.5pt !important; line-height: 1.35 !important; }
 		.kqs-cols-head, .kqs-cols-row {
-			grid-template-columns: 5mm minmax(0, 1fr) 8mm 22mm !important;
+			grid-template-columns: 4mm minmax(0, 1fr) 7mm 16mm !important;
+			width: 100% !important;
 		}
 		.kqs-cols-row .price, .kqs-cols-head .price,
 		.kqs-row > span:last-child {
 			white-space: nowrap !important;
-			overflow: visible !important;
 		}
 	`;
 
@@ -289,7 +297,8 @@ frappe.provide("kqs_retail.silent_print");
 			units: "mm",
 			size: { width: PAGE_WIDTH_MM },
 			margins: { top: 0, right: 0, bottom: 0, left: 0 },
-			scaleContent: true,
+			// false: HTML already sized to paper — scaling was clipping both sides.
+			scaleContent: false,
 			rasterize: true,
 			interpolation: "nearest-neighbor",
 			density: "203dpi",
@@ -303,7 +312,7 @@ frappe.provide("kqs_retail.silent_print");
 				options: {
 					pageWidth: PAGE_WIDTH_MM,
 					units: "mm",
-					scaleContent: true,
+					scaleContent: false,
 				},
 			},
 		];
