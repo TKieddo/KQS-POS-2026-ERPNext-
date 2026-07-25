@@ -1,27 +1,29 @@
-/* KQS 80mm thermal receipts — high contrast, bold type */
+/* KQS 80mm thermal receipts — high contrast, left-aligned, safe right edge */
 @page {
 	size: 80mm auto;
 	margin: 0;
 }
 
 .kqs-rcpt {
-	width: 72mm;
-	max-width: 72mm;
-	margin: 0 auto;
-	padding: 2mm 2mm 5mm;
-	color: #000;
+	/* Keep inside typical 80mm printable width (avoid right-edge clip). */
+	width: 68mm;
+	max-width: 68mm;
+	margin: 0;
+	padding: 1mm 3.5mm 4mm 0.5mm;
+	color: #000 !important;
 	background: #fff;
 	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
-	font-size: 11pt;
-	font-weight: 700;
-	line-height: 1.3;
+	font-size: 10.5pt;
+	font-weight: 800;
+	line-height: 1.28;
 	-webkit-print-color-adjust: exact;
 	print-color-adjust: exact;
 }
 
 .kqs-rcpt * {
 	box-sizing: border-box;
-	color: #000;
+	color: #000 !important;
+	opacity: 1 !important;
 }
 
 .kqs-logo {
@@ -37,20 +39,23 @@
 
 .kqs-store-name {
 	font-size: 13pt;
-	font-weight: 800;
+	font-weight: 900;
 	margin: 0 0 1mm;
 }
 
+/* Address must print dark on thermal — avoid light/thin weights. */
 .kqs-muted-line {
-	font-size: 9pt;
-	font-weight: 600;
+	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
+	font-size: 10pt;
+	font-weight: 800;
 	margin: 0;
+	line-height: 1.3;
 }
 
 .kqs-rule {
 	border: 0;
 	border-top: 1.5px dashed #000;
-	margin: 2.5mm 0;
+	margin: 2mm 0;
 }
 
 .kqs-rule-solid {
@@ -67,17 +72,24 @@
 	margin: 0.8mm 0;
 }
 
+.kqs-row > span:last-child {
+	flex-shrink: 0;
+	text-align: right;
+	white-space: nowrap;
+	padding-left: 1mm;
+}
+
 .kqs-meta {
 	display: flex;
 	justify-content: space-between;
-	gap: 3mm;
+	gap: 2mm;
 	font-size: 10pt;
 	margin: 1mm 0 2mm;
 }
 
 .kqs-meta-stack {
 	font-size: 10pt;
-	font-weight: 700;
+	font-weight: 800;
 	margin: 2mm 0;
 	line-height: 1.35;
 }
@@ -95,14 +107,14 @@
 }
 
 .kqs-total-big {
-	font-size: 16pt;
+	font-size: 15pt;
 	font-weight: 900;
 	margin: 2mm 0;
 }
 
 .kqs-total-big .label {
 	font-size: 12pt;
-	font-weight: 800;
+	font-weight: 900;
 }
 
 .kqs-bar {
@@ -128,28 +140,33 @@
 }
 
 .kqs-item-name {
-	font-size: 11pt;
-	font-weight: 800;
+	font-size: 10.5pt;
+	font-weight: 900;
+	word-break: break-word;
 }
 
 .kqs-item-sub {
+	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
 	font-size: 9pt;
-	font-weight: 600;
+	font-weight: 700;
 	margin-top: 0.4mm;
-	padding-left: 2mm;
+	padding-left: 1mm;
+	word-break: break-word;
 }
 
+/* Wider Price column so "L 1,200.00" is not clipped. */
 .kqs-cols-head,
 .kqs-cols-row {
 	display: grid;
-	grid-template-columns: 6mm 1fr 10mm 18mm;
+	grid-template-columns: 5mm minmax(0, 1fr) 8mm 22mm;
 	gap: 1mm;
 	align-items: start;
-	font-size: 10pt;
+	font-size: 9.5pt;
+	width: 100%;
 }
 
 .kqs-cols-head {
-	font-weight: 800;
+	font-weight: 900;
 	border-bottom: 1.5px solid #000;
 	padding-bottom: 1mm;
 	margin-bottom: 1.5mm;
@@ -164,6 +181,13 @@
 .kqs-cols-head .qty,
 .kqs-cols-head .price {
 	text-align: right;
+	white-space: nowrap;
+}
+
+.kqs-cols-row .price,
+.kqs-cols-head .price {
+	overflow: visible;
+	padding-right: 0.5mm;
 }
 
 .kqs-cols-row .num,
@@ -172,17 +196,19 @@
 }
 
 .kqs-mono {
+	/* Keep numbers readable; body text still uses bold Arial where overridden. */
 	font-family: "Courier New", Courier, monospace;
-	font-weight: 700;
-	letter-spacing: -0.02em;
+	font-weight: 800;
+	letter-spacing: -0.03em;
 }
 
 .kqs-totals .kqs-row {
-	font-size: 11pt;
+	font-size: 10.5pt;
+	font-weight: 800;
 }
 
 .kqs-grand {
-	font-size: 15pt;
+	font-size: 14pt;
 	font-weight: 900;
 	margin-top: 1.5mm;
 }
@@ -190,13 +216,14 @@
 .kqs-script {
 	font-family: Georgia, "Times New Roman", serif;
 	font-style: italic;
-	font-weight: 700;
-	font-size: 13pt;
+	font-weight: 800;
+	font-size: 12pt;
 	text-align: center;
 	margin: 3mm 0 2mm;
 }
 
 .kqs-policy-title {
+	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
 	font-size: 11pt;
 	font-weight: 900;
 	text-align: center;
@@ -205,8 +232,9 @@
 }
 
 .kqs-policy {
-	font-size: 8.5pt;
-	font-weight: 600;
+	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
+	font-size: 9.5pt;
+	font-weight: 800;
 	text-align: center;
 	margin: 0 0 2mm;
 	line-height: 1.35;
@@ -214,15 +242,17 @@
 
 .kqs-thanks {
 	text-align: center;
-	font-size: 10pt;
-	font-weight: 800;
+	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
+	font-size: 9.5pt;
+	font-weight: 900;
 	text-transform: uppercase;
 	margin: 1mm 0;
+	letter-spacing: -0.02em;
 }
 
 .kqs-footer-line {
 	font-size: 9pt;
-	font-weight: 700;
+	font-weight: 800;
 	margin: 1mm 0;
 }
 
@@ -234,8 +264,9 @@
 	display: flex;
 	align-items: center;
 	gap: 2mm;
+	font-family: Arial, Helvetica, "DejaVu Sans", sans-serif;
 	font-size: 9.5pt;
-	font-weight: 700;
+	font-weight: 800;
 	margin: 1.2mm 0;
 }
 
