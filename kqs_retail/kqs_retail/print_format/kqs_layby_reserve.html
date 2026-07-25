@@ -1,8 +1,8 @@
-{# KQS Layby Reserve — Columns thermal (store / hold slip) #}
-<div class="kqs-rcpt kqs-mono">
+{# KQS Layby Reserve — compact store / hold slip #}
+<div class="kqs-rcpt">
 	{{ kqs_header_brand() }}
 
-	<div class="kqs-center kqs-policy-title" style="margin-top: 2mm;">Layby Reserve — Store Copy</div>
+	<div class="kqs-center kqs-policy-title" style="margin-top: 1.5mm;">Layby Reserve — Store</div>
 
 	<hr class="kqs-rule" />
 	{{ kqs_meta_stack() }}
@@ -17,22 +17,15 @@
 	<hr class="kqs-rule" />
 
 	<div class="kqs-cols-head">
-		<span class="num">#</span>
-		<span>Item</span>
 		<span class="qty">Qty</span>
+		<span>Item</span>
 		<span class="price">Hold</span>
 	</div>
 
 	{%- for row in doc.items -%}
 	<div class="kqs-cols-row">
-		<span class="num">{{ loop.index }}</span>
-		<span>
-			<span class="kqs-item-name">{{ row.item_name or row.item_code }}</span>
-			{%- if row.item_code -%}
-			<div class="kqs-item-sub">{{ row.item_code }}</div>
-			{%- endif -%}
-		</span>
-		<span class="qty">{{ row.qty }}</span>
+		<span class="qty">{{ kqs_qty(row.qty) }}</span>
+		<span class="kqs-item-name">{{ kqs_receipt_item_name(row) }}</span>
 		<span class="price">HOLD</span>
 	</div>
 	{%- endfor -%}

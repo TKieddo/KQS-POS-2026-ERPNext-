@@ -1,4 +1,4 @@
-{# KQS Receipt Columns — ISH-inspired monospaced / dashed layout #}
+{# KQS Receipt Columns — compact 80mm (Qty | Item | Price) #}
 <div class="kqs-rcpt">
 	{{ kqs_logo() }}
 	{{ kqs_header_brand() }}
@@ -8,23 +8,15 @@
 	<hr class="kqs-rule" />
 
 	<div class="kqs-cols-head">
-		<span class="num">#</span>
-		<span>Item</span>
 		<span class="qty">Qty</span>
+		<span>Item</span>
 		<span class="price">Price</span>
 	</div>
 
 	{%- for row in doc.items -%}
 	<div class="kqs-cols-row">
-		<span class="num">{{ loop.index }}</span>
-		<span>
-			<span class="kqs-item-name">{{ row.item_name or row.item_code }}</span>
-			{%- set detail = kqs_item_detail(row) -%}
-			{%- if detail -%}
-			<div class="kqs-item-sub">{{ detail }}</div>
-			{%- endif -%}
-		</span>
-		<span class="qty">{{ row.qty }}</span>
+		<span class="qty">{{ kqs_qty(row.qty) }}</span>
+		<span class="kqs-item-name">{{ kqs_receipt_item_name(row) }}</span>
 		<span class="price">{{ kqs_money(row.amount) }}</span>
 	</div>
 	{%- endfor -%}
@@ -32,10 +24,6 @@
 	<hr class="kqs-rule" />
 
 	<div class="kqs-totals">
-		<div class="kqs-row">
-			<span>Subtotal</span>
-			<span>{{ kqs_money(doc.net_total or doc.total) }}</span>
-		</div>
 		{%- if doc.discount_amount -%}
 		<div class="kqs-row">
 			<span>Discount</span>

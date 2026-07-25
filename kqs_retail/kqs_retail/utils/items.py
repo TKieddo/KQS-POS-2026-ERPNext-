@@ -3,6 +3,7 @@
 """Item / variant helpers shared by product setup and stock transfer."""
 
 import frappe
+from frappe.utils import cint, cstr, flt
 
 
 def infer_template_code(item_code: str) -> str:
@@ -33,6 +34,51 @@ def resolve_template_code(item_code: str) -> str:
 def variant_item_name(parent_name: str, attrs: dict) -> str:
 	label = ", ".join(f"{k}: {v}" for k, v in attrs.items())
 	return f"{parent_name} ({label})" if label else parent_name
+
+
+def format_receipt_qty(qty) -> str:
+	"""Whole quantities as 1, 2, 4 — not 1.0 — to save thermal width."""
+	q = flt(qty)
+	if abs(q - cint(q)) < 1e-9:
+		return str(cint(q))
+	return f"{q:g}"
+
+
+def format_receipt_item_name(item_name: str | None = None, item_code: str | None = None) -> str:
+	"""Compact POS line: ``Nike Sneaker (Black, 6)`` — no SKU, no Colour:/Size: labels."""
+	code = (item_code or "").strip()
+	name = (item_name or code or "").strip()
+	if not name:
+		return ""
+
+	base = name
+	if "(" in name and name.endswith(")"):
+		base = name[: name.rfind("(")].strip() or name
+
+	values: list[str] = []
+	if code and frappe.db.exists("Item", code):
+		rows = frappe.get_all(
+			"Item Variant Attribute",
+			filters={"parent": code},
+			fields=["attribute_value"],
+			order_by="idx asc",
+		)
+		values = [cstr(r.attribute_value).strip() for r in rows if cstr(r.attribute_value).strip()]
+
+	if not values and "(" in name and name.endswith(")"):
+		inner = name[name.rfind("(") + 1 : -1]
+		for part in inner.split(","):
+			part = part.strip()
+			if not part:
+				continue
+			if ":" in part:
+				values.append(part.split(":", 1)[1].strip())
+			else:
+				values.append(part)
+
+	if values:
+		return f"{base} ({', '.join(values)})"
+	return base
 
 
 def get_variant_attributes(item_code: str) -> dict[str, str]:

@@ -60,13 +60,13 @@
 .kqs-rule {
 	border: 0;
 	border-top: 1.5px dashed #000;
-	margin: 2mm 0;
+	margin: 1.5mm 0;
 }
 
 .kqs-rule-solid {
 	border: 0;
 	border-top: 2px solid #000;
-	margin: 2mm 0;
+	margin: 1.5mm 0;
 }
 
 .kqs-row {
@@ -100,14 +100,14 @@
 }
 
 .kqs-meta-stack {
-	font-size: 9.5pt;
+	font-size: 9pt;
 	font-weight: 800;
-	margin: 2mm 0;
-	line-height: 1.35;
+	margin: 1.2mm 0;
+	line-height: 1.3;
 }
 
 .kqs-meta-stack div {
-	margin: 0.35mm 0;
+	margin: 0.25mm 0;
 }
 
 .kqs-meta .col {
@@ -165,12 +165,12 @@
 	overflow-wrap: anywhere;
 }
 
-/* Price column wide enough for "1,200.00" without currency letter. */
+/* Price column wide enough for "1,200.00"; Qty on the left (no # column). */
 .kqs-cols-head,
 .kqs-cols-row {
 	display: grid;
-	grid-template-columns: 4mm minmax(0, 1fr) 7mm 16mm;
-	gap: 1mm;
+	grid-template-columns: 7mm minmax(0, 1fr) 18mm;
+	gap: 1.2mm;
 	align-items: start;
 	font-size: 9pt;
 	width: 100%;
@@ -179,12 +179,12 @@
 .kqs-cols-head {
 	font-weight: 900;
 	border-bottom: 1.5px solid #000;
-	padding-bottom: 1mm;
-	margin-bottom: 1.5mm;
+	padding-bottom: 0.8mm;
+	margin-bottom: 1mm;
 }
 
 .kqs-cols-row {
-	margin: 1.2mm 0;
+	margin: 0.9mm 0;
 }
 
 .kqs-cols-row .qty,
@@ -194,6 +194,11 @@
 	text-align: right;
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
+}
+
+.kqs-cols-row .qty,
+.kqs-cols-head .qty {
+	text-align: left;
 }
 
 .kqs-cols-row .num,

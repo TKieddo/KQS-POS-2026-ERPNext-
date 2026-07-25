@@ -91,12 +91,16 @@
 {{- _t or "Finest footware" -}}
 {%- endmacro -%}
 
+{%- macro kqs_qty(qty) -%}
+{{- frappe.get_attr("kqs_retail.utils.items.format_receipt_qty")(qty) -}}
+{%- endmacro -%}
+
 {%- macro kqs_item_detail(row) -%}
-{%- if row.description and row.description != row.item_name -%}
-{{- row.description -}}
-{%- elif row.item_code and row.item_code != row.item_name -%}
-{{- row.item_code -}}
-{%- endif -%}
+{#- Intentionally empty on sale slips: no SKU line (saves paper). -#}
+{%- endmacro -%}
+
+{%- macro kqs_receipt_item_name(row) -%}
+{{- frappe.get_attr("kqs_retail.utils.items.format_receipt_item_name")(row.item_name, row.item_code) -}}
 {%- endmacro -%}
 
 {%- macro kqs_header_brand() -%}
@@ -109,15 +113,13 @@
 
 {%- macro kqs_meta_stack(show_customer=true) -%}
 <div class="kqs-meta-stack">
-	<div>Date: {{ doc.get_formatted("posting_date") }}</div>
-	{%- if doc.posting_time -%}
-	<div>Time: {{ doc.get_formatted("posting_time") }}</div>
-	{%- endif -%}
+	<div>Date: {{ doc.get_formatted("posting_date") }}{% if doc.posting_time %} · {{ doc.get_formatted("posting_time") }}{% endif %}</div>
 	{%- set branch = kqs_branch_name() -%}
 	{%- if branch -%}
-	<div>Branch: {{ branch }}</div>
+	<div>Branch: {{ branch }} · #{{ kqs_receipt_no() }}</div>
+	{%- else -%}
+	<div>Receipt #{{ kqs_receipt_no() }}</div>
 	{%- endif -%}
-	<div>Receipt no: {{ kqs_receipt_no() }}</div>
 	{%- if show_customer -%}
 		{%- set cust = kqs_customer_label() -%}
 		{%- set cl = (cust or "")|lower|trim -%}

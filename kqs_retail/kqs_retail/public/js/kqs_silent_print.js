@@ -74,9 +74,10 @@ frappe.provide("kqs_retail.silent_print");
 		.kqs-muted-line { font-size: 9pt !important; }
 		.kqs-policy { font-size: 8.5pt !important; line-height: 1.35 !important; }
 		.kqs-cols-head, .kqs-cols-row {
-			grid-template-columns: 4mm minmax(0, 1fr) 7mm 16mm !important;
+			grid-template-columns: 7mm minmax(0, 1fr) 18mm !important;
 			width: 100% !important;
 		}
+		.kqs-cols-head .qty, .kqs-cols-row .qty { text-align: left !important; }
 		.kqs-cols-row .price, .kqs-cols-head .price,
 		.kqs-row > span:last-child {
 			white-space: nowrap !important;
