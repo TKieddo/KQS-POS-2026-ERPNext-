@@ -8,7 +8,7 @@ frappe.provide("kqs_retail.silent_print");
 	 * Content CSS is 60mm; page a hair wider for printer gutters.
 	 */
 	const PAGE_WIDTH_MM = 64;
-	const LOGO_ASSET = "/assets/kqs_retail/images/kqs-logo.png";
+	const LOGO_ASSET = "/assets/kqs_retail/images/kqs-receipt-logo.png";
 	let print_queue = Promise.resolve();
 	let qz_security_ready = null;
 	let unsigned_hint_shown = false;
@@ -53,8 +53,8 @@ frappe.provide("kqs_retail.silent_print");
 		.kqs-logo {
 			display: block !important;
 			width: auto !important;
-			max-width: 36mm !important;
-			max-height: 14mm !important;
+			max-width: 52mm !important;
+			max-height: 16mm !important;
 			height: auto !important;
 			margin: 0 auto 2mm !important;
 			object-fit: contain !important;
