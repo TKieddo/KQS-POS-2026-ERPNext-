@@ -1,5 +1,7 @@
 /* Copyright (c) 2026, KQS — POS Closing Entry: server submit + clear cashier UX */
 
+const KQS_CASHUP_PRINT_FORMAT = "KQS Cashup";
+
 frappe.ui.form.on("POS Closing Entry", {
 	onload(frm) {
 		frm.kqs_prepared_closing =
@@ -18,6 +20,7 @@ frappe.ui.form.on("POS Closing Entry", {
 		}
 		show_closing_status_headline(frm);
 		kqs_setup_cashier_closing_actions(frm);
+		kqs_setup_cashup_print_action(frm);
 
 		if (frm.doc.docstatus !== 0) {
 			return;
@@ -57,6 +60,119 @@ frappe.ui.form.on("POS Closing Entry", {
 
 function kqs_go_to_point_of_sale() {
 	frappe.set_route("point-of-sale");
+}
+
+function kqs_cashup_print_settings() {
+	const boot = frappe.boot?.kqs_retail_settings || {};
+	return {
+		auto_print: cint(boot.auto_print_cashup_receipt ?? 1) === 1,
+		print_format: (boot.cashup_print_format || KQS_CASHUP_PRINT_FORMAT).trim(),
+	};
+}
+
+function kqs_cashup_printed_key(docname) {
+	return `kqs_cashup_auto_printed:${docname}`;
+}
+
+function kqs_cashup_was_auto_printed(docname) {
+	try {
+		return sessionStorage.getItem(kqs_cashup_printed_key(docname)) === "1";
+	} catch (e) {
+		return false;
+	}
+}
+
+function kqs_cashup_mark_auto_printed(docname) {
+	try {
+		sessionStorage.setItem(kqs_cashup_printed_key(docname), "1");
+	} catch (e) {
+		/* private mode / quota */
+	}
+}
+
+function kqs_get_silent_print_fn() {
+	return window.kqs_print || (window.kqs_retail && kqs_retail.silent_print?.print);
+}
+
+/**
+ * @param {string} docname
+ * @param {{ allow_browser_fallback?: boolean }} [opts]
+ * allow_browser_fallback: true for manual Print button only.
+ * Auto-print must stay QZ/silent — browser printview popups linger and re-prompt on the till.
+ */
+function kqs_print_cashup_receipt(docname, opts) {
+	if (!docname) return Promise.resolve(false);
+	opts = opts || {};
+	const allow_browser = opts.allow_browser_fallback === true;
+	const { print_format } = kqs_cashup_print_settings();
+	const fmt = print_format || KQS_CASHUP_PRINT_FORMAT;
+	const print_fn = kqs_get_silent_print_fn();
+
+	if (print_fn) {
+		return Promise.resolve(print_fn("POS Closing Entry", docname, fmt, "")).then((method) => {
+			// If QZ failed and silent_print fell back to browser, note it — auto path avoids this.
+			return method;
+		});
+	}
+
+	if (!allow_browser) {
+		frappe.show_alert({
+			message: __("Cash up saved. Use Print Cash Up when the printer is ready."),
+			indicator: "blue",
+		}, 8);
+		return Promise.resolve(false);
+	}
+
+	frappe.utils.print("POS Closing Entry", docname, fmt, "", frappe.boot.lang);
+	return Promise.resolve("browser");
+}
+
+function kqs_maybe_auto_print_cashup(docname) {
+	const { auto_print } = kqs_cashup_print_settings();
+	if (!auto_print || !docname) return;
+	// One auto-print per closing per browser session — prevents repeat popups on POS.
+	if (kqs_cashup_was_auto_printed(docname)) return;
+	kqs_cashup_mark_auto_printed(docname);
+
+	setTimeout(() => {
+		const print_fn = kqs_get_silent_print_fn();
+		const { print_format } = kqs_cashup_print_settings();
+		const fmt = print_format || KQS_CASHUP_PRINT_FORMAT;
+
+		// Auto path: QZ only — never open browser printview (sticky popups on POS).
+		if (!print_fn || cint(frappe.boot?.kqs_retail_settings?.enable_qz_silent_print ?? 1) !== 1) {
+			frappe.show_alert({
+				message: __("Cash up saved. Tap Print Cash Up to print the session slip."),
+				indicator: "blue",
+			}, 10);
+			return;
+		}
+
+		Promise.resolve(print_fn("POS Closing Entry", docname, fmt, "", { browser_fallback: false }))
+			.then((method) => {
+				if (method === "qz") return;
+				frappe.show_alert({
+					message: __(
+						"Cash up saved. Printer was busy — use Print Cash Up if you need a paper copy."
+					),
+					indicator: "blue",
+				}, 10);
+			})
+			.catch(() => {
+				frappe.show_alert({
+					message: __("Cash up saved. Use Print Cash Up to print the session slip."),
+					indicator: "blue",
+				}, 10);
+			});
+	}, 400);
+	// Future: after successful QZ print, queue WhatsApp cash-up report to management.
+}
+
+function kqs_setup_cashup_print_action(frm) {
+	if (frm.doc.docstatus !== 1 || !frm.doc.name) return;
+	frm.add_custom_button(__("Print Cash Up"), () =>
+		kqs_print_cashup_receipt(frm.doc.name, { allow_browser_fallback: true })
+	);
 }
 
 function kqs_setup_cashier_closing_actions(frm) {
@@ -172,6 +288,7 @@ function kqs_prepare_then_submit(frm) {
 							},
 							10
 						);
+						kqs_maybe_auto_print_cashup(name);
 						frappe.set_route("Form", "POS Closing Entry", name);
 					},
 				});
@@ -231,8 +348,10 @@ function kqs_submit_closing_entry(frm) {
 					},
 					10
 				);
+				kqs_maybe_auto_print_cashup(frm.doc.name);
 				frm.reload_doc().then(() => {
 					kqs_setup_cashier_closing_actions(frm);
+					kqs_setup_cashup_print_action(frm);
 				});
 			},
 			error() {

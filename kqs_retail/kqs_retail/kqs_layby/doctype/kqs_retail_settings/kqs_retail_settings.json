@@ -23,6 +23,9 @@
   "section_break_ar_receipts",
   "auto_print_ar_payment_receipts",
   "ar_payment_print_format",
+  "section_break_cashup",
+  "auto_print_cashup_receipt",
+  "cashup_print_format",
   "section_break_silent_print",
   "enable_qz_silent_print",
   "qz_printer_name",
@@ -166,6 +169,25 @@
    "fieldname": "ar_payment_print_format",
    "fieldtype": "Link",
    "label": "Account Payment Print Format",
+   "options": "Print Format"
+  },
+  {
+   "fieldname": "section_break_cashup",
+   "fieldtype": "Section Break",
+   "label": "Cash Up / Closing"
+  },
+  {
+   "default": "1",
+   "description": "Print the cash-up / session closing slip automatically when a POS Closing Entry is submitted.",
+   "fieldname": "auto_print_cashup_receipt",
+   "fieldtype": "Check",
+   "label": "Auto-print Cash Up Receipt on Close"
+  },
+  {
+   "description": "Till cash-up report. DocType must be POS Closing Entry. No logo — store copy for the drawer.",
+   "fieldname": "cashup_print_format",
+   "fieldtype": "Link",
+   "label": "Cash Up Print Format",
    "options": "Print Format"
   },
   {

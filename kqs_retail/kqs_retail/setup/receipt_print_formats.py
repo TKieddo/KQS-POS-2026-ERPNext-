@@ -3,12 +3,16 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import frappe
 
 MODULE = "KQS Layby"
 PRINT_DIR = Path(__file__).resolve().parent.parent / "print_format"
+LOGO_PATH = Path(__file__).resolve().parent.parent / "public" / "images" / "kqs-receipt-logo.png"
+LOGO_PLACEHOLDER = "__KQS_RECEIPT_LOGO_SRC__"
+LOGO_ASSET_FALLBACK = "/assets/kqs_retail/images/kqs-receipt-logo.png"
 
 # Winner layout for till sales (user-selected).
 SALE_COLUMNS = "KQS Receipt Columns"
@@ -16,6 +20,7 @@ SALE_COLUMNS_SI = "KQS Receipt Columns (SI)"
 LAYBY_CUSTOMER = "KQS Layby Customer"
 LAYBY_RESERVE = "KQS Layby Reserve"
 ACCOUNT_PAYMENT = "KQS Account Payment"
+CASHUP = "KQS Cashup"
 
 # (name, doc_type, html file)
 FORMATS = (
@@ -28,6 +33,7 @@ FORMATS = (
 	(LAYBY_CUSTOMER, "Layby Agreement", "kqs_layby_customer.html"),
 	(LAYBY_RESERVE, "Layby Agreement", "kqs_layby_reserve.html"),
 	(ACCOUNT_PAYMENT, "Payment Entry", "kqs_account_payment.html"),
+	(CASHUP, "POS Closing Entry", "kqs_cashup.html"),
 )
 
 
@@ -37,7 +43,7 @@ def ensure_receipt_print_formats() -> None:
 		return
 
 	css = _read("thermal_shared.css")
-	macros = _read("_macros.html")
+	macros = _read("_macros.html").replace(LOGO_PLACEHOLDER, _logo_src())
 
 	for name, doc_type, html_file in FORMATS:
 		if doc_type != "POS Invoice" and doc_type != "Sales Invoice":
@@ -51,6 +57,14 @@ def ensure_receipt_print_formats() -> None:
 	frappe.clear_cache()
 
 
+def _logo_src() -> str:
+	"""Embed receipt logo as a data URI so print/QZ never hit Docker host_name URLs."""
+	if not LOGO_PATH.is_file():
+		return LOGO_ASSET_FALLBACK
+	b64 = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
+	return f"data:image/png;base64,{b64}"
+
+
 def _link_default_settings() -> None:
 	"""Point layby / AR settings at Columns-style KQS formats."""
 	if not frappe.db.exists("DocType", "KQS Retail Settings"):
@@ -62,6 +76,7 @@ def _link_default_settings() -> None:
 		"layby_reserve_print_format": LAYBY_RESERVE,
 		"layby_complete_print_format": SALE_COLUMNS_SI,
 		"ar_payment_print_format": ACCOUNT_PAYMENT,
+		"cashup_print_format": CASHUP,
 	}
 	for field, value in defaults.items():
 		if doc.get(field) != value and frappe.db.exists("Print Format", value):

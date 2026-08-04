@@ -5,8 +5,8 @@
 {%- endmacro -%}
 
 {%- macro kqs_logo() -%}
-{%- set _logo = frappe.utils.get_url("/assets/kqs_retail/images/kqs-receipt-logo.png") -%}
-<img class="kqs-logo" src="{{ _logo }}" alt="KQS" />
+{#- src filled at install time (data URI) so print/QZ never depend on host_name. -#}
+<img class="kqs-logo" src="__KQS_RECEIPT_LOGO_SRC__" alt="KQS" />
 {%- endmacro -%}
 
 {%- macro kqs_company_name() -%}
@@ -92,7 +92,14 @@
 {%- endmacro -%}
 
 {%- macro kqs_qty(qty) -%}
-{{- frappe.get_attr("kqs_retail.utils.items.format_receipt_qty")(qty) -}}
+{#- Whole quantities as 1, 2, 4 — not 1.0 — to save thermal width. -#}
+{%- set q = frappe.utils.flt(qty or 0) -%}
+{%- set i = frappe.utils.cint(q) -%}
+{%- if (q - i)|abs < 0.000000001 -%}
+{{- i -}}
+{%- else -%}
+{{- q -}}
+{%- endif -%}
 {%- endmacro -%}
 
 {%- macro kqs_item_detail(row) -%}
@@ -100,7 +107,41 @@
 {%- endmacro -%}
 
 {%- macro kqs_receipt_item_name(row) -%}
-{{- frappe.get_attr("kqs_retail.utils.items.format_receipt_item_name")(row.item_name, row.item_code) -}}
+{#- Compact POS line: Nike Sneaker (Black, 6) — no SKU, no Colour:/Size: labels.
+    Pure Jinja + frappe.db (print sandbox blocks frappe.get_attr / may omit jinja hooks). -#}
+{%- set code = (row.item_code or "")|string|trim -%}
+{%- set name = (row.item_name or code or "")|string|trim -%}
+{%- if name -%}
+	{%- set base = name -%}
+	{%- if "(" in name and name.endswith(")") -%}
+		{%- set cut = name[:name.rfind("(")]|trim -%}
+		{%- if cut -%}{%- set base = cut -%}{%- endif -%}
+	{%- endif -%}
+	{%- set ns = namespace(values=[]) -%}
+	{%- if code and frappe.db.exists("Item", code) -%}
+		{%- for r in frappe.db.get_all("Item Variant Attribute", filters={"parent": code}, fields=["attribute_value"], order_by="idx asc") -%}
+			{%- set v = (r.attribute_value or "")|string|trim -%}
+			{%- if v -%}{%- set _ = ns.values.append(v) -%}{%- endif -%}
+		{%- endfor -%}
+	{%- endif -%}
+	{%- if (not ns.values) and "(" in name and name.endswith(")") -%}
+		{%- set inner = name[name.rfind("(") + 1 : -1] -%}
+		{%- for part in inner.split(",") -%}
+			{%- set p = part|trim -%}
+			{%- if p and ":" in p -%}
+				{%- set bits = p.split(":") -%}
+				{%- set _ = ns.values.append(bits[1]|trim) -%}
+			{%- elif p -%}
+				{%- set _ = ns.values.append(p) -%}
+			{%- endif -%}
+		{%- endfor -%}
+	{%- endif -%}
+	{%- if ns.values -%}
+{{- base }} ({{ ns.values|join(", ") }})
+	{%- else -%}
+{{- base -}}
+	{%- endif -%}
+{%- endif -%}
 {%- endmacro -%}
 
 {%- macro kqs_header_brand() -%}

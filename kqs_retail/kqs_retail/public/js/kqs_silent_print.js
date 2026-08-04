@@ -4,10 +4,11 @@ frappe.provide("kqs_retail.silent_print");
 (function () {
 	const STORAGE_KEY = "kqs_qz_printer_name";
 	/**
-	 * Match content width — do NOT oversize then scale (that clips both sides).
-	 * Content CSS is 60mm; page a hair wider for printer gutters.
+	 * 80mm paper ≈ 72mm printable. Content ~70mm (small gutters).
+	 * Page width matches content so QZ does not leave a wide blank right band.
 	 */
-	const PAGE_WIDTH_MM = 64;
+	const CONTENT_WIDTH_MM = 70;
+	const PAGE_WIDTH_IN = 2.76; /* ~70mm */
 	const LOGO_ASSET = "/assets/kqs_retail/images/kqs-receipt-logo.png";
 	let print_queue = Promise.resolve();
 	let qz_security_ready = null;
@@ -18,8 +19,8 @@ frappe.provide("kqs_retail.silent_print");
 		html, body {
 			margin: 0 !important;
 			padding: 0 !important;
-			width: ${PAGE_WIDTH_MM}mm !important;
-			max-width: ${PAGE_WIDTH_MM}mm !important;
+			width: ${CONTENT_WIDTH_MM}mm !important;
+			max-width: ${CONTENT_WIDTH_MM}mm !important;
 			overflow: hidden !important;
 			background: #fff !important;
 			color: #000 !important;
@@ -27,19 +28,20 @@ frappe.provide("kqs_retail.silent_print");
 			print-color-adjust: exact !important;
 			-webkit-font-smoothing: none !important;
 			font-smooth: never !important;
+			text-align: left !important;
 		}
 		.print-format, .print-format-gutter, .page-break {
-			margin: 0 auto !important;
+			margin: 0 !important;
 			padding: 0 !important;
-			width: 60mm !important;
-			max-width: 60mm !important;
+			width: ${CONTENT_WIDTH_MM}mm !important;
+			max-width: ${CONTENT_WIDTH_MM}mm !important;
 			overflow: hidden !important;
 		}
 		.kqs-rcpt {
-			width: 60mm !important;
-			max-width: 60mm !important;
-			margin: 0 auto !important;
-			padding: 1.5mm 2mm 4mm !important;
+			width: ${CONTENT_WIDTH_MM}mm !important;
+			max-width: ${CONTENT_WIDTH_MM}mm !important;
+			margin: 0 !important;
+			padding: 0.5mm 1.5mm 2.5mm 1mm !important;
 			overflow: hidden !important;
 			font-family: Arial, Helvetica, sans-serif !important;
 			color: #000 !important;
@@ -52,12 +54,16 @@ frappe.provide("kqs_retail.silent_print");
 		}
 		.kqs-logo {
 			display: block !important;
-			width: auto !important;
-			max-width: 52mm !important;
-			max-height: 16mm !important;
+			width: 100% !important;
+			max-width: 100% !important;
 			height: auto !important;
-			margin: 0 auto 2mm !important;
+			max-height: none !important;
+			margin: 0 0 1mm !important;
 			object-fit: contain !important;
+			object-position: center !important;
+		}
+		.kqs-store-name {
+			margin: 0 0 0.5mm !important;
 		}
 		.kqs-muted-line,
 		.kqs-policy,
@@ -69,13 +75,14 @@ frappe.provide("kqs_retail.silent_print");
 			font-weight: 900 !important;
 			color: #000 !important;
 			opacity: 1 !important;
-			-webkit-text-stroke: 0.25px #000;
 		}
 		.kqs-muted-line { font-size: 9pt !important; }
 		.kqs-policy { font-size: 8.5pt !important; line-height: 1.35 !important; }
 		.kqs-cols-head, .kqs-cols-row {
-			grid-template-columns: 7mm minmax(0, 1fr) 18mm !important;
+			grid-template-columns: 6mm minmax(0, 1fr) 20mm !important;
 			width: 100% !important;
+			gap: 1mm !important;
+			box-sizing: border-box !important;
 		}
 		.kqs-cols-head .qty, .kqs-cols-row .qty { text-align: left !important; }
 		.kqs-cols-row .price, .kqs-cols-head .price,
@@ -197,53 +204,84 @@ frappe.provide("kqs_retail.silent_print");
 			});
 	}
 
+	function fetch_qz_certificate() {
+		return frappe
+			.call({
+				method: "kqs_retail.api.qz_sign.get_certificate",
+				freeze: false,
+			})
+			.then((r) => cstr(r.message || "").trim())
+			.catch(() => "");
+	}
+
+	function fetch_signing_configured() {
+		return frappe
+			.call({
+				method: "kqs_retail.api.qz_sign.is_signing_configured",
+				freeze: false,
+			})
+			.then((r) => Boolean(r.message?.configured))
+			.catch(() => false);
+	}
+
+	function apply_qz_signing(cert_pem) {
+		/* Prefer sync cert resolve — async AJAX during websocket.connect breaks QZ. */
+		qz.security.setCertificatePromise((resolve) => {
+			resolve(cert_pem || "");
+		});
+		qz.security.setSignatureAlgorithm("SHA512");
+		qz.security.setSignaturePromise((toSign) => {
+			return (resolve, reject) => {
+				frappe
+					.call({
+						method: "kqs_retail.api.qz_sign.sign_message",
+						args: { request: toSign },
+						freeze: false,
+					})
+					.then((r) => {
+						const sig = cstr(r.message || "").trim();
+						if (sig) {
+							resolve(sig);
+						} else {
+							reject("empty signature");
+						}
+					})
+					.catch((err) => reject(err));
+			};
+		});
+	}
+
+	function apply_qz_unsigned() {
+		qz.security.setCertificatePromise((resolve) => {
+			resolve("");
+		});
+		qz.security.setSignaturePromise(() => {
+			return (resolve) => {
+				resolve();
+			};
+		});
+	}
+
 	function ensure_qz_security() {
 		if (qz_security_ready) {
 			return qz_security_ready;
 		}
-		qz_security_ready = frappe.ui.form.qz_init().then(() => {
+		qz_security_ready = frappe.ui.form.qz_init().then(async () => {
 			if (typeof qz === "undefined" || !qz.security) {
 				return false;
 			}
-			qz.security.setCertificatePromise((resolve) => {
-				frappe
-					.call({
-						method: "kqs_retail.api.qz_sign.get_certificate",
-						freeze: false,
-					})
-					.then((r) => {
-						const cert = cstr(r.message || "").trim();
-						resolve(cert || "");
-					})
-					.catch(() => resolve(""));
-			});
-			qz.security.setSignatureAlgorithm("SHA512");
-			qz.security.setSignaturePromise((toSign) => {
-				return (resolve, reject) => {
-					frappe
-						.call({
-							method: "kqs_retail.api.qz_sign.sign_message",
-							args: { request: toSign },
-							freeze: false,
-						})
-						.then((r) => {
-							const sig = cstr(r.message || "").trim();
-							if (sig) {
-								resolve(sig);
-							} else {
-								reject("empty signature");
-							}
-						})
-						.catch(() => reject("sign failed"));
-				};
-			});
-			return frappe
-				.call({
-					method: "kqs_retail.api.qz_sign.is_signing_configured",
-					freeze: false,
-				})
-				.then((r) => Boolean(r.message?.configured))
-				.catch(() => false);
+			const configured = await fetch_signing_configured();
+			if (!configured) {
+				apply_qz_unsigned();
+				return false;
+			}
+			const cert = await fetch_qz_certificate();
+			if (!cert) {
+				apply_qz_unsigned();
+				return false;
+			}
+			apply_qz_signing(cert);
+			return true;
 		});
 		return qz_security_ready;
 	}
@@ -262,6 +300,37 @@ frappe.provide("kqs_retail.silent_print");
 		);
 	}
 
+	async function qz_connect_quiet(signing_ok) {
+		/* Avoid frappe.ui.form.qz_connect — it frappe.throws a “install QZ” modal on failure. */
+		await frappe.ui.form.qz_init();
+		if (typeof qz === "undefined" || !qz.websocket) {
+			throw new Error("QZ library not loaded");
+		}
+		if (qz.websocket.isActive()) {
+			return signing_ok;
+		}
+		try {
+			await qz.websocket.connect({ retries: 5, delay: 1 });
+			return signing_ok;
+		} catch (err) {
+			if (!signing_ok) {
+				throw err;
+			}
+			/* Signed handshake failed (cert/override mismatch) — retry anonymous. */
+			console.warn("KQS QZ signed connect failed; retrying unsigned.", err);
+			try {
+				if (qz.websocket.isActive()) {
+					await qz.websocket.disconnect();
+				}
+			} catch (e) {
+				/* ignore */
+			}
+			apply_qz_unsigned();
+			await qz.websocket.connect({ retries: 5, delay: 1 });
+			return false;
+		}
+	}
+
 	async function resolve_qz_printer() {
 		const configured = resolve_printer_name();
 		if (configured) {
@@ -278,15 +347,15 @@ frappe.provide("kqs_retail.silent_print");
 	}
 
 	async function print_via_qz(doctype, docname, print_format, letterhead) {
-		if (!frappe.ui?.form?.qz_connect) {
+		if (!frappe.ui?.form?.qz_init) {
 			throw new Error("QZ helpers not available");
 		}
 		const signing_ok = await ensure_qz_security();
-		await frappe.ui.form.qz_connect();
+		const using_signing = await qz_connect_quiet(signing_ok);
 		if (typeof qz === "undefined" || !qz.print || !qz.configs?.create) {
 			throw new Error("QZ Tray API not ready");
 		}
-		if (!signing_ok) {
+		if (!using_signing) {
 			hint_remember_allow();
 		}
 
@@ -295,13 +364,13 @@ frappe.provide("kqs_retail.silent_print");
 		// Avoid colorType blackwhite — it thresholds antialiased text and washes
 		// out address/policy lines on thermal heads.
 		const config = qz.configs.create(printer || null, {
-			units: "mm",
-			size: { width: PAGE_WIDTH_MM },
+			units: "in",
+			size: { width: PAGE_WIDTH_IN },
 			margins: { top: 0, right: 0, bottom: 0, left: 0 },
-			// false: HTML already sized to paper — scaling was clipping both sides.
-			scaleContent: false,
+			scaleContent: true,
 			rasterize: true,
-			interpolation: "nearest-neighbor",
+			/* bilinear: cleaner logo/text than nearest-neighbor on 203dpi thermal */
+			interpolation: "bilinear",
 			density: "203dpi",
 		});
 		const data = [
@@ -311,9 +380,8 @@ frappe.provide("kqs_retail.silent_print");
 				flavor: "plain",
 				data: html,
 				options: {
-					pageWidth: PAGE_WIDTH_MM,
-					units: "mm",
-					scaleContent: false,
+					pageWidth: PAGE_WIDTH_IN,
+					scaleContent: true,
 				},
 			},
 		];
@@ -324,14 +392,23 @@ frappe.provide("kqs_retail.silent_print");
 	}
 
 	/**
-	 * Print a document: try QZ silent HTML, then browser printview
+	 * Print a document: try QZ silent HTML, then optionally browser printview
 	 * (silent under Chrome --kiosk-printing). Jobs run in a serial queue
 	 * so layby's two slips do not race.
+	 *
+	 * @param {string} doctype
+	 * @param {string} docname
+	 * @param {string} print_format
+	 * @param {string} [letterhead]
+	 * @param {{ browser_fallback?: boolean }} [opts]
+	 *        browser_fallback defaults true. Set false for auto cash-up so a
+	 *        failed QZ job never leaves a sticky printview popup on the till.
 	 */
-	function kqs_print(doctype, docname, print_format, letterhead) {
+	function kqs_print(doctype, docname, print_format, letterhead, opts) {
 		if (!print_format || !docname) {
 			return Promise.resolve(false);
 		}
+		const allow_browser = !opts || opts.browser_fallback !== false;
 
 		const job = print_queue.then(async () => {
 			if (is_qz_enabled()) {
@@ -341,6 +418,9 @@ frappe.provide("kqs_retail.silent_print");
 				} catch (err) {
 					console.warn("KQS QZ print failed; falling back to browser.", err);
 				}
+			}
+			if (!allow_browser) {
+				return "skipped";
 			}
 			try {
 				browser_print(doctype, docname, print_format, letterhead);

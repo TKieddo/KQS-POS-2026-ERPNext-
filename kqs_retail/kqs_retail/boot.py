@@ -23,6 +23,9 @@ def redirect_cashier_to_pos(bootinfo):
 			["Form", "POS Closing Entry"],
 			["pos-closing-entry"],
 		]
+		# Empty workspace sidebars so Desk chrome has nothing to render if it flashes.
+		bootinfo["workspace_sidebar_item"] = {}
+		bootinfo["allowed_workspaces"] = []
 
 
 def inject_kqs_retail_settings(bootinfo):

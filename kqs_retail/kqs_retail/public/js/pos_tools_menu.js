@@ -2,7 +2,7 @@
  * After editing this file, run: python scripts/merge_pos_tools_menu.py
  */
 
-const KQS_POS_TOOLS_MENU_VERSION = 5;
+const KQS_POS_TOOLS_MENU_VERSION = 6;
 
 frappe.provide("kqs_retail.pos_tools_menu");
 
@@ -42,6 +42,38 @@ kqs_retail.pos_tools_menu = (function () {
 
 	function icon_close() {
 		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.47 8.47a.75.75 0 0 1 1.06 0L12 10.94l2.47-2.47a.75.75 0 1 1 1.06 1.06L13.06 12l2.47 2.47a.75.75 0 0 1-1.06 1.06L12 13.06l-2.47 2.47a.75.75 0 0 1-1.06-1.06L10.94 12 8.47 9.53a.75.75 0 0 1 0-1.06z"/><path d="M4.5 4.5A9 9 0 1 1 3 12a9 9 0 0 1 1.5-7.5z" opacity=".18"/></svg>`;
+	}
+
+	function icon_logout() {
+		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.5 3.75a.75.75 0 0 1 .75-.75h6A2.25 2.25 0 0 1 19.5 5.25v13.5A2.25 2.25 0 0 1 17.25 21h-6a.75.75 0 0 1 0-1.5h6a.75.75 0 0 0 .75-.75V5.25a.75.75 0 0 0-.75-.75h-6a.75.75 0 0 1-.75-.75z"/><path d="M3.22 11.47a.75.75 0 0 0 0 1.06l3.75 3.75a.75.75 0 1 0 1.06-1.06L5.81 12.75H14a.75.75 0 0 0 0-1.5H5.81l2.22-2.22a.75.75 0 0 0-1.06-1.06l-3.75 3.5z"/></svg>`;
+	}
+
+	function confirm_logout(on_confirm) {
+		frappe.confirm(
+			__(
+				"Log out of this account?<br><br><b>Your till stays open</b> until you use Close POS. You can sign back in later and resume the same session."
+			),
+			() => on_confirm?.(),
+			() => {}
+		);
+	}
+
+	function do_logout() {
+		// Call logout API directly so we only show our Menu confirmation (not a second dialog).
+		frappe.call({
+			method: "logout",
+			callback(r) {
+				if (r.exc) {
+					return;
+				}
+				try {
+					frappe.app?.clear_session?.();
+				} catch (e) {
+					/* ignore */
+				}
+				window.location.href = "/login";
+			},
+		});
 	}
 
 	function get_tiles(pos) {
@@ -115,6 +147,17 @@ kqs_retail.pos_tools_menu = (function () {
 					if (typeof pos.close_pos === "function") {
 						pos.close_pos();
 					}
+				},
+			},
+			{
+				id: "logout",
+				title: __("Log Out"),
+				desc: __("Sign out of this login. Till stays open until Close POS."),
+				gradient: "linear-gradient(145deg, #FF6B6B 0%, #C62828 100%)",
+				icon: icon_logout(),
+				confirm_before: confirm_logout,
+				action() {
+					do_logout();
 				},
 			}
 		);
@@ -387,8 +430,16 @@ kqs_retail.pos_tools_menu = (function () {
 			const tile = tiles.find((row) => row.id === id);
 			if (!tile) return;
 			const target_pos = active_pos;
-			close({ restore_pos: false });
-			frappe.after_ajax(() => tile.action(target_pos));
+			const run = () => {
+				close({ restore_pos: false });
+				frappe.after_ajax(() => tile.action(target_pos));
+			};
+			// Confirm first while Menu is still visible — cancel must leave the till usable.
+			if (typeof tile.confirm_before === "function") {
+				tile.confirm_before(run);
+				return;
+			}
+			run();
 		});
 	}
 

@@ -1,5 +1,5 @@
 /* Copyright (c) 2026, KQS â€” Layby, returns & checkout flow for ERPNext Point of Sale */
-const KQS_POS_PAGE_SCRIPT_VERSION = 50;
+const KQS_POS_PAGE_SCRIPT_VERSION = 60;
 
 frappe.provide("kqs_retail.pos_returns");
 
@@ -56,490 +56,385 @@ kqs_retail.pos_returns = (function () {
 		const style_id = `kqs-returns-styles-v${KQS_POS_PAGE_SCRIPT_VERSION}`;
 		document.querySelectorAll('[id^="kqs-returns-styles"]').forEach((el) => el.remove());
 		if (document.getElementById(style_id)) return;
+		let fonts = document.getElementById("kqs-layby-hub-fonts");
+		if (!fonts) {
+			fonts = document.createElement("link");
+			fonts.id = "kqs-layby-hub-fonts";
+			fonts.rel = "stylesheet";
+			document.head.appendChild(fonts);
+		}
+		fonts.href =
+			"https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;600;700;800;900&display=swap";
 		const style = document.createElement("style");
 		style.id = style_id;
 		style.textContent = `
+			.kqs-returns-app,
+			.kqs-pos-returns-layer,
+			.point-of-sale-app.kqs-returns-mount-host {
+				--kqs-ink: #0a0a0a;
+				--kqs-ink-soft: #1c1917;
+				--kqs-paper: #ffffff;
+				--kqs-mute: #6b6b6b;
+				--kqs-line: rgba(10, 10, 10, 0.1);
+				--kqs-surface: #ffffff;
+				--kqs-signal: #c8102e;
+				--kqs-signal-soft: #fdecee;
+				--kqs-font-ui: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+				--kqs-font-display: "Unbounded", "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+			}
+			@keyframes kqs-returns-step-in {
+				from { opacity: 0; transform: translateY(10px); }
+				to { opacity: 1; transform: none; }
+			}
+			@keyframes kqs-returns-select-pulse {
+				0% { transform: scale(1); }
+				45% { transform: scale(1.02); }
+				100% { transform: scale(1); }
+			}
 			[data-page-route="point-of-sale"] .layout-main-section.kqs-returns-mount {
-				padding-bottom: 0 !important;
-				margin-bottom: 0 !important;
-				overflow: hidden;
-				background: #fff !important;
+				padding-bottom: 0 !important; margin-bottom: 0 !important;
+				overflow: hidden; background: #ffffff !important;
 			}
 			.point-of-sale-app.kqs-returns-mount-host {
-				width: 100%;
-				box-sizing: border-box;
-				background: #fff;
+				width: 100%; box-sizing: border-box; background: #ffffff;
 			}
 			.kqs-pos-returns-layer {
-				display: none;
-				flex: 1 1 auto;
-				width: 100%;
-				min-height: 0;
-				overflow: hidden;
-				background: #fff;
+				display: none; flex: 1 1 auto; width: 100%; min-height: 0;
+				overflow: hidden; background: #ffffff;
 			}
 			.kqs-pos-returns-layer:not(.d-none) {
-				display: flex;
-				flex-direction: column;
+				display: flex; flex-direction: column;
 			}
 			.kqs-returns-app {
-				flex: 1 1 auto;
-				display: flex;
-				flex-direction: row;
-				align-items: stretch;
-				width: 100%;
-				height: 100%;
-				min-height: 0;
-				max-width: none;
-				margin: 0;
-				padding: 0;
-				box-sizing: border-box;
-				background: #fff;
+				flex: 1 1 auto; display: flex; flex-direction: row; align-items: stretch;
+				width: 100%; height: 100%; min-height: 0; max-width: none;
+				margin: 0; padding: 0; box-sizing: border-box;
+				font-family: var(--kqs-font-ui); color: var(--kqs-ink);
+				background: #ffffff; -webkit-font-smoothing: antialiased;
 			}
 			.kqs-returns-sidebar {
-				flex: 0 0 11rem;
-				width: 11rem;
-				padding: 0.65rem 0.7rem;
-				background: #fff;
-				border-right: 1px solid #e2e8f0;
-				display: flex;
-				flex-direction: column;
-				gap: 0.35rem;
-				overflow-y: auto;
+				flex: 0 0 12.5rem; width: 12.5rem; padding: 1rem 0.85rem;
+				background: rgba(255, 255, 255, 0.92);
+				border-right: 1px solid var(--kqs-line);
+				display: flex; flex-direction: column; gap: 0.4rem; overflow-y: auto;
 			}
 			.kqs-returns-sidebar-title {
-				font-size: 11px;
-				font-weight: 700;
-				text-transform: uppercase;
-				letter-spacing: 0.07em;
-				color: #64748b;
-				margin: 0 0 0.15rem;
+				font-family: var(--kqs-font-display); font-size: 0.68rem; font-weight: 700;
+				text-transform: uppercase; letter-spacing: 0.14em; color: var(--kqs-mute);
+				margin: 0 0 0.35rem;
 			}
 			.kqs-returns-sidebar-hint {
-				font-size: 11px;
-				line-height: 1.4;
-				color: #64748b;
-				margin: 0 0 0.35rem;
+				font-size: 0.78rem; line-height: 1.4; color: var(--kqs-mute); margin: 0 0 0.45rem;
 			}
-			.kqs-returns-sidebar-actions {
-				display: flex;
-				flex-direction: column;
-				gap: 0.4rem;
-			}
+			.kqs-returns-sidebar-actions { display: flex; flex-direction: column; gap: 0.4rem; }
 			.kqs-returns-sidebar-btn {
-				display: block;
-				width: 100%;
-				text-align: left;
-				border-radius: 8px;
-				font-size: 11px;
-				font-weight: 600;
-				padding: 0.4rem 0.55rem;
-				white-space: normal;
-				line-height: 1.25;
+				display: block; width: 100%; text-align: left; border-radius: 4px;
+				font-family: var(--kqs-font-ui); font-size: 0.8rem; font-weight: 600;
+				padding: 0.55rem 0.7rem; white-space: normal; line-height: 1.25; min-height: 2.5rem;
 			}
+			.kqs-returns-app .btn {
+				font-family: var(--kqs-font-ui); font-weight: 600; border-radius: 4px;
+				min-height: 2.65rem; padding: 0.55rem 1.1rem;
+				transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+			}
+			.kqs-returns-app .btn:active { transform: translateY(1px); }
+			.kqs-returns-app .btn-primary,
 			.kqs-returns-sidebar-btn.btn-primary {
-				background: #0f172a;
-				border-color: #0f172a;
-				color: #fff;
+				background: var(--kqs-ink) !important; border-color: var(--kqs-ink) !important;
+				color: var(--kqs-surface) !important; font-weight: 700;
+				box-shadow: 3px 3px 0 rgba(200, 16, 46, 0.35);
 			}
-			.kqs-returns-sidebar-btn.btn-primary:hover,
-			.kqs-returns-sidebar-btn.btn-primary:focus {
-				background: #1e293b;
-				border-color: #1e293b;
-				color: #fff;
+			.kqs-returns-app .btn-primary:hover,
+			.kqs-returns-sidebar-btn.btn-primary:hover {
+				background: var(--kqs-ink-soft) !important; border-color: var(--kqs-ink-soft) !important;
+				color: var(--kqs-surface) !important;
+			}
+			.kqs-returns-app .btn-default {
+				background: transparent !important; border: 1.5px solid var(--kqs-ink) !important;
+				color: var(--kqs-ink) !important;
 			}
 			.kqs-returns-sidebar-policy {
-				margin-top: auto;
-				padding-top: 0.75rem;
-				border-top: 1px solid #e2e8f0;
-				font-size: 10px;
-				line-height: 1.4;
-				color: #94a3b8;
+				margin-top: auto; padding-top: 0.85rem; border-top: 1px solid var(--kqs-line);
+				font-size: 0.72rem; line-height: 1.45; color: var(--kqs-mute);
 			}
 			.kqs-returns-main {
-				flex: 1 1 auto;
-				min-width: 0;
-				overflow-x: hidden;
-				overflow-y: auto;
-				padding: 0.65rem 0.9rem 0.5rem;
-				max-width: 920px;
-				background: #fff;
+				flex: 1 1 auto; min-width: 0; overflow-x: hidden; overflow-y: auto;
+				padding: 1.15rem 1.35rem 1.5rem; background: #ffffff;
 			}
+			.kqs-returns-step-enter { animation: kqs-returns-step-in 0.32s ease-out; }
 			.kqs-returns-hero {
-				border-radius: 10px;
-				padding: 0.7rem 0.9rem 0.75rem;
-				background: #fff;
-				border: 1px solid #e2e8f0;
-				color: #0f172a;
-				box-shadow: none;
-				margin-bottom: 0.6rem;
+				padding: 0.15rem 0 0.85rem; margin-bottom: 0.65rem;
+				border-bottom: 1px solid var(--kqs-line); background: transparent; border-radius: 0;
+			}
+			.kqs-returns-brand-mark {
+				font-family: var(--kqs-font-display); font-weight: 800; font-size: 0.72rem;
+				letter-spacing: 0.22em; text-transform: uppercase; color: var(--kqs-signal);
+				margin: 0 0 0.55rem;
 			}
 			.kqs-returns-hero-title {
-				font-size: 1.1rem;
-				font-weight: 700;
-				margin: 0 0 0.2rem;
-				letter-spacing: -0.02em;
-				color: #0f172a !important;
+				font-family: var(--kqs-font-display); font-size: clamp(1.45rem, 2.3vw, 1.95rem);
+				font-weight: 800; margin: 0 0 0.35rem; letter-spacing: -0.045em; line-height: 1.05;
+				color: var(--kqs-ink) !important;
 			}
 			.kqs-returns-hero-sub {
-				line-height: 1.35;
-				margin: 0;
-				font-size: 12px;
-				color: #64748b !important;
+				line-height: 1.5; margin: 0; font-size: 0.92rem; color: var(--kqs-mute) !important;
 			}
 			.kqs-returns-hero-chips {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.35rem;
-				margin-top: 0.5rem;
+				display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem;
 			}
 			.kqs-returns-chip {
-				display: inline-flex;
-				align-items: center;
-				gap: 0.3rem;
-				padding: 0.18rem 0.5rem;
-				border-radius: 999px;
-				background: #f8fafc;
-				border: 1px solid #e2e8f0;
-				font-size: 10px;
-				font-weight: 600;
-				letter-spacing: 0.02em;
-				color: #334155;
+				display: inline-flex; align-items: center; gap: 0.3rem;
+				padding: 0.28rem 0.55rem; border-radius: 4px; background: #fafafa;
+				border: 1px solid var(--kqs-line); font-size: 0.72rem; font-weight: 600;
+				letter-spacing: 0.02em; color: var(--kqs-ink);
 			}
 			.kqs-returns-steps {
-				display: grid;
-				grid-template-columns: repeat(4, 1fr);
-				gap: 0.3rem;
-				margin-bottom: 0.55rem;
+				display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; margin-bottom: 0.85rem;
 			}
 			.kqs-returns-step-pill {
-				text-align: center;
-				padding: 0.32rem 0.25rem;
-				border-radius: 8px;
-				background: #fff;
-				border: 1px solid #e2e8f0;
-				font-size: 10px;
-				font-weight: 600;
-				color: #64748b;
+				text-align: center; padding: 0.45rem 0.3rem; border-radius: 4px;
+				background: transparent; border: 1.5px solid var(--kqs-line);
+				font-size: 0.72rem; font-weight: 700; color: var(--kqs-mute);
+				text-transform: uppercase; letter-spacing: 0.04em;
 			}
 			.kqs-returns-step-pill.is-active {
-				background: #eff6ff;
-				border-color: #93c5fd;
-				color: #1d4ed8;
-				box-shadow: 0 0 0 1px #bfdbfe inset;
+				background: var(--kqs-ink); border-color: var(--kqs-ink); color: #fff;
+				box-shadow: inset 0 -2px 0 var(--kqs-signal);
 			}
-			.kqs-returns-step-pill.is-done { color: #059669; border-color: #a7f3d0; background: #ecfdf5; }
+			.kqs-returns-step-pill.is-done {
+				color: var(--kqs-ink); border-color: var(--kqs-ink); background: rgba(10, 10, 10, 0.04);
+			}
 			.kqs-returns-panel {
-				background: #fff;
-				border: 1px solid #e2e8f0;
-				border-radius: 10px;
-				padding: 0.65rem 0.75rem 0.7rem;
+				background: transparent; border: 0; border-radius: 0; padding: 0.15rem 0 0.5rem;
 				box-shadow: none;
 			}
-			.kqs-returns-search-row {
-				display: flex;
-				gap: 0.5rem;
-				margin: 0.5rem 0 0.75rem;
+			.kqs-returns-section-label {
+				display: block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.12em; color: var(--kqs-mute); margin: 0 0 0.55rem;
 			}
-			.kqs-returns-search-row input { flex: 1; border-radius: 10px; }
-			.kqs-returns-search-row .btn { border-radius: 10px; min-width: 5.5rem; }
-			.kqs-returns-filter-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.85rem; }
+			.kqs-returns-search-row { display: flex; gap: 0.45rem; margin: 0.35rem 0 0.75rem; }
+			.kqs-returns-search-input {
+				flex: 1; width: 100%; min-height: 3rem; padding: 0.7rem 0.9rem;
+				border: 1.5px solid var(--kqs-ink); border-radius: 4px;
+				background: var(--kqs-surface); color: var(--kqs-ink);
+				font-family: var(--kqs-font-ui); font-size: 1rem; font-weight: 500;
+				outline: none; box-shadow: 3px 3px 0 rgba(10, 10, 10, 0.08);
+				transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+			}
+			.kqs-returns-search-input::placeholder { color: var(--kqs-mute); font-weight: 400; }
+			.kqs-returns-search-input:focus {
+				background: #fff;
+				box-shadow: 3px 3px 0 rgba(10, 10, 10, 0.16), 0 0 0 3px rgba(10, 10, 10, 0.1);
+			}
+			.kqs-returns-search-row .btn { border-radius: 4px; min-width: 5.5rem; min-height: 3rem; }
+			.kqs-returns-filter-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
 			.kqs-returns-filter-btn {
-				border-radius: 999px;
-				font-size: 11px;
-				font-weight: 600;
-				padding: 0.25rem 0.7rem;
+				border-radius: 4px !important; font-size: 0.78rem !important; font-weight: 600 !important;
+				padding: 0.35rem 0.75rem !important; min-height: 2.2rem;
+				border: 1.5px solid var(--kqs-line) !important; background: transparent !important;
+				color: var(--kqs-mute) !important; box-shadow: none !important;
 			}
 			.kqs-returns-filter-btn.is-active {
-				background: #2563eb;
-				border-color: #2563eb;
-				color: #fff;
+				background: var(--kqs-ink) !important; border-color: var(--kqs-ink) !important;
+				color: #fff !important;
 			}
 			.kqs-returns-list-meta {
-				font-size: 12px;
-				color: #64748b;
-				margin-bottom: 0.55rem;
+				font-size: 0.8rem; color: var(--kqs-mute); margin-bottom: 0.35rem;
 			}
-			.kqs-returns-receipt-list { display: grid; gap: 0.55rem; }
+			.kqs-returns-receipt-list { display: block; }
 			.kqs-returns-receipt-card {
-				display: grid;
-				grid-template-columns: auto 1fr auto;
-				gap: 0.75rem;
-				align-items: center;
-				width: 100%;
-				text-align: left;
-				border: 1px solid #e2e8f0;
-				border-radius: 12px;
-				background: #fff;
-				padding: 0.8rem 0.95rem;
-				cursor: pointer;
-				transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+				display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: center;
+				width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--kqs-line);
+				border-radius: 0; background: transparent; padding: 0.85rem 0.15rem;
+				cursor: pointer; transition: background 0.16s ease, color 0.16s ease;
 			}
-			.kqs-returns-receipt-card:hover {
-				border-color: #93c5fd;
-				box-shadow: 0 6px 16px rgba(37, 99, 235, 0.1);
-				transform: translateY(-1px);
+			.kqs-returns-receipt-card:hover { background: rgba(10, 10, 10, 0.04); }
+			.kqs-returns-receipt-card:active { animation: kqs-returns-select-pulse 0.28s ease; }
+			.kqs-returns-receipt-icon { display: none; }
+			.kqs-returns-receipt-title {
+				font-family: var(--kqs-font-display); font-weight: 700; color: var(--kqs-ink);
+				font-size: 0.95rem; letter-spacing: -0.02em;
 			}
-			.kqs-returns-receipt-icon {
-				width: 2.5rem;
-				height: 2.5rem;
-				border-radius: 10px;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				background: #eff6ff;
-				color: #2563eb;
-				font-size: 1.1rem;
+			.kqs-returns-receipt-meta {
+				font-size: 0.8rem; color: var(--kqs-mute); margin-top: 0.2rem; line-height: 1.35;
 			}
-			.kqs-returns-receipt-title { font-weight: 700; color: #0f172a; font-size: 14px; }
-			.kqs-returns-receipt-meta { font-size: 12px; color: #64748b; margin-top: 0.2rem; line-height: 1.35; }
 			.kqs-returns-receipt-amount {
-				font-weight: 700;
-				font-size: 15px;
-				color: #0f172a;
-				text-align: right;
-				white-space: nowrap;
+				font-family: var(--kqs-font-display); font-weight: 700; font-size: 1.05rem;
+				color: var(--kqs-signal); text-align: right; white-space: nowrap; letter-spacing: -0.03em;
 			}
 			.kqs-returns-receipt-card.is-expired {
-				opacity: 0.72;
-				border-style: dashed;
-				border-color: #fca5a5;
-				background: #fffbfb;
+				opacity: 0.55; border-style: solid; border-color: transparent;
+				border-bottom-color: var(--kqs-line); background: transparent;
 			}
 			.kqs-returns-receipt-expired {
-				font-size: 10px;
-				font-weight: 700;
-				color: #b91c1c;
-				text-transform: uppercase;
-				letter-spacing: 0.04em;
-				margin-top: 0.2rem;
+				font-size: 0.68rem; font-weight: 700; color: var(--kqs-signal);
+				text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.2rem; text-align: right;
 			}
 			.kqs-returns-empty {
-				text-align: center;
-				padding: 2rem 1rem;
-				color: #64748b;
-				border: 1px dashed #cbd5e1;
-				border-radius: 12px;
-				background: #f8fafc;
+				text-align: center; padding: 2.25rem 1rem; color: var(--kqs-mute);
+				border: 0; border-top: 1px solid var(--kqs-line); border-radius: 0; background: transparent;
 			}
-			.kqs-returns-empty-icon { font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.65; }
+			.kqs-returns-empty-icon {
+				font-family: var(--kqs-font-display); font-size: 0.75rem; font-weight: 800;
+				letter-spacing: 0.18em; text-transform: uppercase; color: var(--kqs-signal);
+				margin-bottom: 0.75rem;
+			}
 			.kqs-returns-receipt-banner {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.5rem 1rem;
-				align-items: center;
-				padding: 0.85rem 1rem;
-				border-radius: 10px;
-				background: #f8fafc;
-				border: 1px solid #e2e8f0;
-				margin-bottom: 0.85rem;
+				display: flex; flex-wrap: wrap; gap: 0.45rem 1rem; align-items: baseline;
+				padding: 0 0 0.85rem; margin-bottom: 0.85rem;
+				border-bottom: 1px solid var(--kqs-line); background: transparent; border-radius: 0;
 			}
-			.kqs-returns-table { background: #fff; margin-bottom: 0.75rem; }
-			.kqs-returns-table thead th { background: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
-			.kqs-returns-table .kqs-return-item-name { font-weight: 600; color: #0f172a; }
+			.kqs-returns-receipt-banner strong {
+				font-family: var(--kqs-font-display); font-size: 1.1rem; font-weight: 800;
+				letter-spacing: -0.03em;
+			}
+			.kqs-returns-table {
+				background: transparent; margin-bottom: 0.75rem; border: 0 !important;
+			}
+			.kqs-returns-table thead th {
+				background: transparent; font-size: 0.68rem; text-transform: uppercase;
+				letter-spacing: 0.1em; color: var(--kqs-mute); border-bottom: 1px solid var(--kqs-line) !important;
+				font-weight: 700;
+			}
+			.kqs-returns-table tbody td {
+				border-color: var(--kqs-line) !important; vertical-align: middle; padding: 0.7rem 0.5rem;
+			}
+			.kqs-returns-table .kqs-return-item-name {
+				font-family: var(--kqs-font-display); font-weight: 700; color: var(--kqs-ink);
+				letter-spacing: -0.02em;
+			}
 			.kqs-returns-toolbar { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.65rem; }
-			.kqs-returns-credit-box, .kqs-returns-success-card {
-				border-radius: 10px;
-				padding: 0.65rem 0.8rem;
-				margin: 0.45rem 0 0.55rem;
-				background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-				border: 1px solid #6ee7b7;
+			.kqs-returns-credit-box, .kqs-returns-refund-box, .kqs-returns-success-card {
+				border-radius: 4px; padding: 0.95rem 1rem; margin: 0.55rem 0 0.75rem;
+				background: rgba(10, 10, 10, 0.03); border: 1.5px solid var(--kqs-ink);
 			}
-			.kqs-returns-credit-amount { font-size: 1.25rem; font-weight: 800; margin: 0.15rem 0; color: #065f46; }
-			.kqs-returns-refund-box {
-				border-radius: 10px;
-				padding: 0.65rem 0.8rem;
-				margin: 0.45rem 0 0.55rem;
-				background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-				border: 1px solid #93c5fd;
+			.kqs-returns-credit-amount, .kqs-returns-refund-amount {
+				font-family: var(--kqs-font-display); font-size: clamp(1.55rem, 2.8vw, 2.1rem);
+				font-weight: 800; margin: 0.25rem 0; color: var(--kqs-ink); letter-spacing: -0.04em;
 			}
-			.kqs-returns-refund-amount { font-size: 1.25rem; font-weight: 800; margin: 0.15rem 0; color: #1e40af; }
-			.kqs-returns-refund-modes {
-				margin-bottom: 0.55rem;
-			}
+			.kqs-returns-refund-modes { margin-bottom: 0.65rem; }
 			.kqs-returns-refund-modes-label {
-				font-size: 10px;
-				font-weight: 800;
-				text-transform: uppercase;
-				letter-spacing: 0.07em;
-				color: #64748b;
-				margin: 0 0 0.4rem;
+				font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.12em; color: var(--kqs-mute); margin: 0 0 0.55rem;
 			}
 			.kqs-returns-refund-modes-grid {
-				display: grid;
-				grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
-				gap: 0.4rem;
+				display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.55rem;
 			}
 			.kqs-refund-mode-btn {
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				gap: 0.2rem;
-				min-height: 3.25rem;
-				padding: 0.45rem 0.35rem;
-				border-radius: 8px;
-				border: 2px solid #0f172a;
-				background: #fff;
-				font-size: 11px;
-				font-weight: 700;
-				line-height: 1.25;
-				text-align: center;
-				color: #0f172a;
-				cursor: pointer;
-				transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+				position: relative; display: flex; flex-direction: column; align-items: flex-start;
+				justify-content: center; gap: 0.15rem; min-height: 4rem;
+				padding: 0.7rem 0.75rem 0.65rem 2.25rem; border-radius: 4px;
+				border: 2px solid var(--kqs-line); background: var(--kqs-surface);
+				font-family: var(--kqs-font-ui); font-size: 0.88rem; font-weight: 700;
+				line-height: 1.25; text-align: left; color: var(--kqs-ink); cursor: pointer;
+				transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 			}
-			.kqs-refund-mode-btn:hover {
-				border-color: #0f172a;
-				background: #f8fafc;
+			.kqs-refund-mode-btn::before {
+				content: ""; position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%);
+				width: 1.05rem; height: 1.05rem; border: 1.5px solid currentColor; border-radius: 2px;
+				opacity: 0.35;
 			}
+			.kqs-refund-mode-btn:hover { border-color: var(--kqs-ink); }
 			.kqs-refund-mode-btn.is-active {
-				border-color: #0f172a;
-				background: #0f172a;
-				color: #fff;
-				box-shadow: none;
+				border-color: var(--kqs-ink); background: var(--kqs-ink); color: #fff;
+				animation: kqs-returns-select-pulse 0.28s ease;
+			}
+			.kqs-refund-mode-btn.is-active::before {
+				opacity: 1; background: var(--kqs-signal); border-color: var(--kqs-signal);
+				content: "✓"; display: flex; align-items: center; justify-content: center;
+				font-size: 0.72rem; font-weight: 800; color: #fff; line-height: 1;
 			}
 			.kqs-refund-mode-btn .kqs-refund-original {
-				font-size: 9px;
-				font-weight: 700;
-				text-transform: uppercase;
-				letter-spacing: 0.04em;
-				color: #059669;
+				font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.06em; opacity: 0.7;
 			}
-			.kqs-refund-mode-btn.is-active .kqs-refund-original {
-				color: #cbd5e1;
+			.kqs-returns-success-title {
+				font-family: var(--kqs-font-display); font-size: 1.25rem; font-weight: 800;
+				margin-bottom: 0.55rem; color: var(--kqs-ink); letter-spacing: -0.03em;
 			}
-			.kqs-returns-success-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.35rem; color: #065f46; }
-			.kqs-returns-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.45rem; }
-			.kqs-returns-actions .btn { border-radius: 8px; }
-			.kqs-returns-step .btn-lg { min-height: 2.35rem; padding: 0.35rem 0.9rem; font-size: 13px; }
-			.kqs-returns-customer-top {
-				margin-bottom: 0.55rem;
-				padding-top: 0;
+			.kqs-returns-actions {
+				display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 1rem;
+				padding-top: 1rem; border-top: 1px solid var(--kqs-line);
 			}
-			.kqs-returns-customer-top .kqs-returns-customer-prompt:empty {
-				display: none;
+			.kqs-returns-actions .btn-primary, .kqs-returns-step .btn-lg {
+				min-height: 3.1rem; padding: 0.7rem 1.35rem; font-size: 1.02rem;
 			}
-			.kqs-returns-customer-top .kqs-returns-customer-prompt:not(:empty) {
-				margin-bottom: 0;
-			}
-			.kqs-returns-customer-hero {
-				margin-bottom: 1rem;
-				padding: 0;
-			}
+			.kqs-returns-customer-top { margin-bottom: 0.75rem; padding-top: 0; }
+			.kqs-returns-customer-top .kqs-returns-customer-prompt:empty { display: none; }
+			.kqs-returns-customer-hero { margin-bottom: 1rem; padding: 0; }
 			.kqs-returns-customer-hero-title {
-				font-size: 1.1rem;
-				font-weight: 700;
-				margin: 0 0 0.35rem;
-				color: #0f172a !important;
+				font-family: var(--kqs-font-display); font-size: 1.25rem; font-weight: 800;
+				margin: 0 0 0.35rem; color: var(--kqs-ink) !important; letter-spacing: -0.03em;
 			}
 			.kqs-returns-customer-hero-sub {
-				margin: 0;
-				font-size: 14px;
-				line-height: 1.5;
-				color: #64748b !important;
+				margin: 0; font-size: 0.92rem; line-height: 1.5; color: var(--kqs-mute) !important;
 			}
 			.kqs-returns-customer-prompt {
-				margin-bottom: 0.55rem;
-				padding: 0.55rem 0.7rem;
-				border-radius: 8px;
-				font-size: 12px;
-				line-height: 1.4;
+				margin-bottom: 0.65rem; padding: 0.75rem 0.9rem; border-radius: 4px;
+				font-size: 0.85rem; line-height: 1.45;
 			}
 			.kqs-returns-customer-prompt.is-walkin {
-				background: #fff7ed;
-				border: 1px solid #fdba74;
-				color: #9a3412;
+				background: var(--kqs-signal-soft); border: 1.5px solid rgba(200, 16, 46, 0.35); color: #7f0a1c;
 			}
 			.kqs-returns-customer-prompt.is-named {
-				background: #eff6ff;
-				border: 1px solid #93c5fd;
-				color: #1e40af;
+				background: rgba(10, 10, 10, 0.03); border: 1.5px solid var(--kqs-ink); color: var(--kqs-ink);
 			}
-			.kqs-returns-customer-field-block {
-				margin-bottom: 0.45rem;
-			}
+			.kqs-returns-customer-field-block { margin-bottom: 0.55rem; }
 			.kqs-returns-customer-field-label {
-				display: block;
-				font-size: 0.7rem;
-				font-weight: 800;
-				text-transform: uppercase;
-				letter-spacing: 0.08em;
-				color: #0f172a;
-				margin: 0 0 0.25rem;
+				display: block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.12em; color: var(--kqs-mute); margin: 0 0 0.35rem;
 			}
 			.kqs-returns-customer-field-hint {
-				margin: 0 0 0.4rem;
-				font-size: 11px;
-				color: #64748b;
-				line-height: 1.35;
+				margin: 0 0 0.45rem; font-size: 0.8rem; color: var(--kqs-mute); line-height: 1.4;
 			}
 			.kqs-returns-customer-tools {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.4rem;
-				margin: 0 0 0.45rem;
+				display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0 0 0.55rem;
 			}
 			.kqs-returns-customer-tools .btn {
-				border-radius: 8px;
-				font-weight: 600;
-				min-height: 2rem;
-				padding: 0.3rem 0.75rem;
-				font-size: 12px;
+				border-radius: 4px; font-weight: 600; min-height: 2.5rem;
+				padding: 0.45rem 0.9rem; font-size: 0.85rem;
 			}
 			.kqs-returns-customer-tools .kqs-returns-customer-create {
-				background: #0f172a;
-				border-color: #0f172a;
-				color: #fff;
-			}
-			.kqs-returns-customer-tools .kqs-returns-customer-create:hover,
-			.kqs-returns-customer-tools .kqs-returns-customer-create:focus {
-				background: #1e293b;
-				border-color: #1e293b;
-				color: #fff;
+				background: var(--kqs-ink) !important; border-color: var(--kqs-ink) !important; color: #fff !important;
 			}
 			.kqs-returns-customer-field-wrap {
-				padding: 0.4rem 0.5rem;
-				border-radius: 10px;
-				background: #eff6ff;
-				border: 2px solid #2563eb;
-				box-shadow: none;
+				padding: 0.55rem 0.65rem; border-radius: 4px; background: var(--kqs-surface);
+				border: 2px solid var(--kqs-ink); box-shadow: 3px 3px 0 rgba(10, 10, 10, 0.08);
 			}
 			.kqs-returns-customer-field-wrap:focus-within {
-				border-color: #1d4ed8;
-				box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+				box-shadow: 3px 3px 0 rgba(10, 10, 10, 0.14), 0 0 0 3px rgba(10, 10, 10, 0.1);
 			}
-			.kqs-returns-customer-field-wrap .frappe-control {
-				margin-bottom: 0 !important;
-			}
-			.kqs-returns-customer-field-wrap .control-label {
-				display: none !important;
-			}
+			.kqs-returns-customer-field-wrap .frappe-control { margin-bottom: 0 !important; }
+			.kqs-returns-customer-field-wrap .control-label { display: none !important; }
 			.kqs-returns-customer-field-wrap .form-control,
 			.kqs-returns-customer-field-wrap input {
-				min-height: 2.4rem;
-				font-size: 0.95rem;
-				font-weight: 600;
-				border-radius: 8px;
-				border: 1px solid #cbd5e1;
-				padding: 0.45rem 0.65rem;
-				color: #0f172a;
+				min-height: 2.6rem; font-size: 1rem; font-weight: 600; border-radius: 4px;
+				border: 1px solid var(--kqs-line); padding: 0.5rem 0.7rem; color: var(--kqs-ink);
+				font-family: var(--kqs-font-ui);
 			}
 			.kqs-returns-customer-field-wrap .form-control::placeholder,
 			.kqs-returns-customer-field-wrap input::placeholder {
-				font-weight: 500;
-				color: #94a3b8;
+				font-weight: 500; color: var(--kqs-mute);
 			}
-			.kqs-returns-step[data-step="customer"] .kqs-returns-summary {
-				margin-top: 0;
-				margin-bottom: 0.45rem;
-			}
+			.kqs-returns-step[data-step="customer"] .kqs-returns-summary { margin-top: 0; margin-bottom: 0.45rem; }
 			.kqs-returns-step[data-step="customer"] .kqs-returns-actions {
-				margin-top: 0.45rem;
-				padding-top: 0.55rem;
-				border-top: 1px solid #e2e8f0;
+				margin-top: 0.75rem; padding-top: 1rem; border-top: 1px solid var(--kqs-line);
 			}
-			.kqs-returns-receipt-when { font-size: 11px; color: #2563eb; font-weight: 600; margin-top: 0.15rem; }
+			.kqs-returns-receipt-when {
+				font-size: 0.75rem; color: var(--kqs-mute); font-weight: 600; margin-top: 0.15rem; text-align: right;
+			}
+			.kqs-returns-loading { padding: 1.5rem 0.25rem; color: var(--kqs-mute); font-size: 0.92rem; }
+			@media (max-width: 768px) {
+				.kqs-returns-app { flex-direction: column; }
+				.kqs-returns-sidebar {
+					flex: 0 0 auto; width: 100%; max-height: none;
+					border-right: 0; border-bottom: 1px solid var(--kqs-line);
+					flex-direction: row; flex-wrap: wrap; align-items: center;
+				}
+				.kqs-returns-sidebar-actions { flex-direction: row; flex-wrap: wrap; }
+				.kqs-returns-sidebar-policy { width: 100%; margin-top: 0.35rem; }
+				.kqs-returns-steps { grid-template-columns: repeat(2, 1fr); }
+			}
 		`;
 		document.head.appendChild(style);
 	}
@@ -562,7 +457,10 @@ kqs_retail.pos_returns = (function () {
 
 	function show_step(name) {
 		layout.find(".kqs-returns-step").addClass("d-none");
-		layout.find(`.kqs-returns-step[data-step="${name}"]`).removeClass("d-none");
+		const $step = layout.find(`.kqs-returns-step[data-step="${name}"]`);
+		$step.removeClass("d-none kqs-returns-step-enter");
+		void $step[0]?.offsetWidth;
+		$step.addClass("kqs-returns-step-enter");
 		layout.find("#kqs-returns-customer-top").toggleClass("d-none", name !== "customer");
 		update_step_pills(name);
 		fit_returns_layer();
@@ -816,7 +714,7 @@ kqs_retail.pos_returns = (function () {
 		if (!filtered.length) {
 			$receipt_list.html(`
 				<div class="kqs-returns-empty">
-					<div class="kqs-returns-empty-icon">ðŸ§¾</div>
+					<div class="kqs-returns-empty-icon">${__("Returns")}</div>
 					<div>${__("No paid receipts found for this store in the last {0} days.", [search_days])}</div>
 					<div class="small text-muted" style="margin-top:0.35rem">${__(
 						"Try another search or check the receipt was rung up on this store's till."
@@ -846,7 +744,6 @@ kqs_retail.pos_returns = (function () {
 				return `<button type="button" class="kqs-returns-receipt-card${expired_class}" data-eligible="${
 					eligible ? 1 : 0
 				}" data-doctype="${frappe.utils.escape_html(row.doctype)}" data-name="${label}">
-					<div class="kqs-returns-receipt-icon">ðŸ§¾</div>
 					<div>
 						<div class="kqs-returns-receipt-title">${label}</div>
 						<div class="kqs-returns-receipt-meta">${customer}</div>
@@ -875,7 +772,7 @@ kqs_retail.pos_returns = (function () {
 		}
 
 		const $receipt_list = layout.find("#kqs-returns-receipt-list");
-		$receipt_list.html(`<p class="text-muted small">${__("Loading store receipts…")}</p>`);
+		$receipt_list.html(`<p class="kqs-returns-loading">${__("Loading store receipts…")}</p>`);
 
 		const apply_payload = (payload) => {
 			const defaults = get_return_policy_defaults();
@@ -1134,8 +1031,8 @@ kqs_retail.pos_returns = (function () {
 				let success_html;
 				if (msg.refund_type === "payment") {
 					success_html = `
-					<div class="kqs-returns-success-card" style="background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border-color:#93c5fd">
-						<div class="kqs-returns-success-title" style="color:#1e40af">${__("Refund processed")}</div>
+					<div class="kqs-returns-success-card">
+						<div class="kqs-returns-success-title">${__("Refund processed")}</div>
 						<p>${__(
 							"Credit note <strong>{0}</strong> submitted. Refund <strong>{1}</strong> via <strong>{2}</strong>.",
 							[
@@ -1218,6 +1115,7 @@ kqs_retail.pos_returns = (function () {
 				</aside>
 				<div class="kqs-returns-main">
 				<div class="kqs-returns-hero">
+					<p class="kqs-returns-brand-mark">KQS</p>
 					<h2 class="kqs-returns-hero-title">${__("Returns & Store Credit")}</h2>
 					<p class="kqs-returns-hero-sub">${__(
 						"Find a receipt, return items, and credit the customer account at this store."
@@ -1256,12 +1154,11 @@ kqs_retail.pos_returns = (function () {
 				</div>
 				<div class="kqs-returns-step" data-step="search">
 					<div class="kqs-returns-panel">
-						<label class="small text-muted text-uppercase" style="letter-spacing:0.05em;font-weight:700">${__(
-							"Search this store"
-						)}</label>
+						<span class="kqs-returns-section-label">${__("Search this store")}</span>
 						<div class="kqs-returns-search-row">
-							<input type="search" class="form-control" id="kqs-returns-search"
-								placeholder="${__("Receipt #, customer name, or mobile")}" />
+							<input type="search" class="kqs-returns-search-input" id="kqs-returns-search"
+								placeholder="${__("Receipt #, customer name, or mobile")}"
+								autocomplete="off" enterkeyhint="search" />
 							<button type="button" class="btn btn-primary btn-sm" id="kqs-returns-search-btn">${__(
 								"Search"
 							)}</button>
@@ -1564,7 +1461,7 @@ kqs_retail.pos_returns = (function () {
 })();
 
 /* Copyright (c) 2026, KQS â€” Customer Account hub for ERPNext Point of Sale */
-const KQS_CUSTOMER_ACCOUNT_HUB_VERSION = 3;
+const KQS_CUSTOMER_ACCOUNT_HUB_VERSION = KQS_POS_PAGE_SCRIPT_VERSION;
 const CA_META_SEP = " | ";
 
 frappe.provide("kqs_retail.pos_customer_account");
@@ -1644,425 +1541,460 @@ kqs_retail.pos_customer_account = (function () {
 	}
 
 	function inject_styles() {
-		const style_id = `kqs-customer-account-styles-v${KQS_CUSTOMER_ACCOUNT_HUB_VERSION}`;
+		const style_id = `kqs-customer-account-styles-v${KQS_POS_PAGE_SCRIPT_VERSION}`;
 		document.querySelectorAll('[id^="kqs-customer-account-styles"]').forEach((el) => el.remove());
 		if (document.getElementById(style_id)) return;
+		let fonts = document.getElementById("kqs-layby-hub-fonts");
+		if (!fonts) {
+			fonts = document.createElement("link");
+			fonts.id = "kqs-layby-hub-fonts";
+			fonts.rel = "stylesheet";
+			document.head.appendChild(fonts);
+		}
+		fonts.href =
+			"https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;600;700;800;900&display=swap";
 		const style = document.createElement("style");
 		style.id = style_id;
 		style.textContent = `
+			.kqs-ca-app,
+			.kqs-pos-customer-account-layer,
+			.point-of-sale-app.kqs-customer-account-mount-host {
+				--kqs-ink: #0a0a0a;
+				--kqs-ink-soft: #1c1917;
+				--kqs-paper: #ffffff;
+				--kqs-mute: #6b6b6b;
+				--kqs-line: rgba(10, 10, 10, 0.1);
+				--kqs-surface: #ffffff;
+				--kqs-signal: #c8102e;
+				--kqs-signal-soft: #fdecee;
+				--kqs-font-ui: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+				--kqs-font-display: "Unbounded", "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+			}
+			@keyframes kqs-ca-step-in {
+				from { opacity: 0; transform: translateY(10px); }
+				to { opacity: 1; transform: none; }
+			}
+			@keyframes kqs-ca-select-pulse {
+				0% { transform: scale(1); }
+				45% { transform: scale(1.02); }
+				100% { transform: scale(1); }
+			}
+			@keyframes kqs-ca-money-glow {
+				from { box-shadow: 0 0 0 0 rgba(10, 10, 10, 0); }
+				to { box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.14); }
+			}
 			[data-page-route="point-of-sale"] .layout-main-section.kqs-customer-account-mount {
-				padding-bottom: 0 !important;
-				margin-bottom: 0 !important;
-				overflow: hidden;
-				background: #f8fafc !important;
+				padding-bottom: 0 !important; margin-bottom: 0 !important;
+				overflow: hidden; background: #ffffff !important;
 			}
 			.point-of-sale-app.kqs-customer-account-mount-host {
-				width: 100%;
-				box-sizing: border-box;
-				background: #f8fafc;
+				width: 100%; box-sizing: border-box; background: #ffffff;
 			}
 			.kqs-pos-customer-account-layer {
-				display: none;
-				flex: 1 1 auto;
-				width: 100%;
-				min-height: 0;
-				overflow: hidden;
-				background: #f8fafc;
+				display: none; flex: 1 1 auto; width: 100%; min-height: 0;
+				overflow: hidden; background: #ffffff;
 			}
 			.kqs-pos-customer-account-layer:not(.d-none) {
-				display: flex;
-				flex-direction: column;
+				display: flex; flex-direction: column;
 			}
 			.kqs-ca-app {
-				flex: 1 1 auto;
-				display: flex;
-				flex-direction: row;
-				align-items: stretch;
-				width: 100%;
-				height: 100%;
-				min-height: 0;
-				box-sizing: border-box;
+				flex: 1 1 auto; display: flex; flex-direction: row; align-items: stretch;
+				width: 100%; height: 100%; min-height: 0; box-sizing: border-box;
+				font-family: var(--kqs-font-ui); color: var(--kqs-ink);
+				-webkit-font-smoothing: antialiased;
 			}
 			.kqs-ca-list-panel {
-				flex: 0 0 17rem;
-				width: 17rem;
-				background: #fff;
-				border-right: 1px solid #e2e8f0;
-				display: flex;
-				flex-direction: column;
-				min-height: 0;
+				flex: 0 0 20rem; width: 20rem; background: rgba(255, 255, 255, 0.92);
+				border-right: 1px solid var(--kqs-line);
+				display: flex; flex-direction: column; min-height: 0;
+				backdrop-filter: blur(8px);
 			}
 			.kqs-ca-list-head {
-				padding: 0.75rem 0.8rem 0.55rem;
-				border-bottom: 1px solid #e2e8f0;
+				padding: 1.1rem 1rem 0.95rem; border-bottom: 1px solid var(--kqs-line);
 			}
 			.kqs-ca-list-title {
-				font-size: 11px;
-				font-weight: 700;
-				text-transform: uppercase;
-				letter-spacing: 0.07em;
-				color: #64748b;
-				margin: 0 0 0.45rem;
-			}
-			.kqs-ca-search-row {
-				display: flex;
-				gap: 0.35rem;
-			}
-			.kqs-ca-search-row input {
-				flex: 1;
-				border-radius: 8px;
-				font-size: 12px;
-			}
-			.kqs-ca-filter-row {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.3rem;
-				margin-top: 0.5rem;
-			}
-			.kqs-ca-filter-btn {
-				border-radius: 999px;
-				font-size: 10px;
-				font-weight: 600;
-				padding: 0.15rem 0.45rem;
-				border: 1px solid #e2e8f0;
-				background: #fff;
-				color: #64748b;
-			}
-			.kqs-ca-filter-btn.is-active {
-				background: #0f172a;
-				border-color: #0f172a;
-				color: #fff;
-			}
-			.kqs-ca-customer-list {
-				flex: 1 1 auto;
-				overflow-y: auto;
-				padding: 0.45rem 0.55rem 0.65rem;
-			}
-			.kqs-ca-customer-card {
-				display: block;
-				width: 100%;
-				text-align: left;
-				border: 1px solid #e2e8f0;
-				border-radius: 10px;
-				padding: 0.55rem 0.6rem;
-				margin-bottom: 0.4rem;
-				background: #fff;
-				cursor: pointer;
-				transition: border-color 0.15s, box-shadow 0.15s;
-			}
-			.kqs-ca-customer-card:hover {
-				border-color: #cbd5e1;
-				box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-			}
-			.kqs-ca-customer-card.is-selected {
-				border-color: #2563eb;
-				background: #eff6ff;
-				box-shadow: 0 0 0 1px #2563eb;
-			}
-			.kqs-ca-customer-name {
-				font-size: 13px;
-				font-weight: 700;
-				color: #0f172a;
-				line-height: 1.25;
-			}
-			.kqs-ca-customer-phone {
-				font-size: 11px;
-				color: #64748b;
-				margin-top: 0.1rem;
-			}
-			.kqs-ca-customer-badges {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.25rem;
-				margin-top: 0.35rem;
-			}
-			.kqs-ca-badge {
-				font-size: 10px;
-				font-weight: 600;
-				padding: 0.1rem 0.35rem;
-				border-radius: 999px;
-			}
-			.kqs-ca-badge-owes { background: #fef2f2; color: #b91c1c; }
-			.kqs-ca-badge-credit { background: #ecfdf5; color: #047857; }
-			.kqs-ca-badge-layby { background: #eff6ff; color: #1d4ed8; }
-			.kqs-ca-list-meta {
-				font-size: 10px;
-				color: #94a3b8;
-				padding: 0 0.15rem 0.35rem;
-			}
-			.kqs-ca-sidebar-foot {
-				padding: 0.55rem 0.8rem;
-				border-top: 1px solid #e2e8f0;
-			}
-			.kqs-ca-sidebar-foot .btn {
-				width: 100%;
-				border-radius: 8px;
-				font-size: 11px;
-				font-weight: 600;
-			}
-			.kqs-ca-main {
-				flex: 1 1 auto;
-				min-width: 0;
-				overflow-x: hidden;
-				overflow-y: auto;
-				padding: 0.75rem 1rem 1rem;
-			}
-			.kqs-ca-empty {
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				min-height: 320px;
-				text-align: center;
-				color: #64748b;
-				padding: 2rem 1rem;
-			}
-			.kqs-ca-empty-icon {
-				font-size: 2.5rem;
-				margin-bottom: 0.65rem;
-				opacity: 0.5;
-			}
-			.kqs-ca-empty-title {
-				font-size: 1.15rem;
-				font-weight: 700;
-				color: #0f172a;
-				margin-bottom: 0.35rem;
-			}
-			.kqs-ca-hero {
-				border-radius: 12px;
-				padding: 1rem 1.1rem;
-				background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
-				color: #fff;
-				margin-bottom: 0.75rem;
-			}
-			.kqs-ca-hero-top {
-				display: flex;
-				flex-wrap: wrap;
-				align-items: flex-start;
-				justify-content: space-between;
-				gap: 0.65rem;
-			}
-			.kqs-ca-hero-name {
-				font-size: 1.35rem;
-				font-weight: 800;
-				margin: 0;
-				letter-spacing: -0.02em;
-				color: #fff !important;
-			}
-			.kqs-ca-hero-meta {
-				font-size: 12px;
-				color: rgba(255, 255, 255, 0.88) !important;
-				margin-top: 0.2rem;
-			}
-			.kqs-ca-hero .kqs-ca-stat-label,
-			.kqs-ca-hero .kqs-ca-stat-value {
-				color: #fff;
-			}
-			.kqs-ca-hero-actions .btn {
-				border-radius: 8px;
-				font-size: 11px;
-				font-weight: 600;
-			}
-			.kqs-ca-stat-grid {
-				display: grid;
-				grid-template-columns: repeat(4, minmax(0, 1fr));
-				gap: 0.55rem;
-				margin-top: 0.85rem;
-			}
-			.kqs-ca-stat-card {
-				background: rgba(255,255,255,0.12);
-				border: 1px solid rgba(255,255,255,0.18);
-				border-radius: 10px;
-				padding: 0.55rem 0.65rem;
-			}
-			.kqs-ca-stat-label {
-				font-size: 10px;
-				text-transform: uppercase;
-				letter-spacing: 0.05em;
-				opacity: 0.8;
-			}
-			.kqs-ca-stat-value {
-				font-size: 1.05rem;
-				font-weight: 800;
-				margin-top: 0.15rem;
-			}
-			.kqs-ca-stat-value.is-danger { color: #fecaca; }
-			.kqs-ca-stat-value.is-success { color: #a7f3d0; }
-			.kqs-ca-tabs {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.35rem;
-				margin-bottom: 0.65rem;
-			}
-			.kqs-ca-tab {
-				border: 1px solid #e2e8f0;
-				background: #fff;
-				border-radius: 999px;
-				padding: 0.3rem 0.75rem;
-				font-size: 11px;
-				font-weight: 600;
-				color: #64748b;
-				cursor: pointer;
-			}
-			.kqs-ca-tab.is-active {
-				background: #0f172a;
-				border-color: #0f172a;
-				color: #fff;
-			}
-			.kqs-ca-panel {
-				background: #fff;
-				border: 1px solid #e2e8f0;
-				border-radius: 12px;
-				padding: 0.85rem 0.95rem;
-			}
-			.kqs-ca-panel-title {
-				font-size: 12px;
-				font-weight: 700;
-				text-transform: uppercase;
-				letter-spacing: 0.05em;
-				color: #64748b;
+				font-family: var(--kqs-font-display); font-size: 0.72rem; font-weight: 700;
+				text-transform: uppercase; letter-spacing: 0.14em; color: var(--kqs-mute);
 				margin: 0 0 0.65rem;
 			}
-			.kqs-ca-table {
-				width: 100%;
-				margin-bottom: 0;
-				font-size: 12px;
+			.kqs-ca-search-row { display: flex; gap: 0.35rem; }
+			.kqs-ca-search-input {
+				flex: 1; width: 100%; min-height: 3rem; padding: 0.7rem 0.9rem;
+				border: 1.5px solid var(--kqs-ink); border-radius: 4px;
+				background: var(--kqs-surface); color: var(--kqs-ink);
+				font-family: var(--kqs-font-ui); font-size: 1rem; font-weight: 500;
+				outline: none; box-shadow: 3px 3px 0 rgba(10, 10, 10, 0.08);
+				transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 			}
+			.kqs-ca-search-input::placeholder { color: var(--kqs-mute); font-weight: 400; }
+			.kqs-ca-search-input:focus {
+				background: #fff;
+				box-shadow: 3px 3px 0 rgba(10, 10, 10, 0.16), 0 0 0 3px rgba(10, 10, 10, 0.1);
+			}
+			.kqs-ca-filter-row {
+				display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.65rem;
+			}
+			.kqs-ca-filter-btn {
+				border-radius: 4px; font-size: 0.72rem; font-weight: 700;
+				padding: 0.3rem 0.55rem; min-height: 2rem;
+				border: 1.5px solid var(--kqs-line); background: transparent; color: var(--kqs-mute);
+				text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer;
+			}
+			.kqs-ca-filter-btn.is-active {
+				background: var(--kqs-ink); border-color: var(--kqs-ink); color: #fff;
+			}
+			.kqs-ca-customer-list {
+				flex: 1 1 auto; overflow-y: auto; padding: 0;
+			}
+			.kqs-ca-customer-card {
+				display: block; width: 100%; text-align: left;
+				border: 0; border-bottom: 1px solid var(--kqs-line); border-radius: 0;
+				padding: 0.85rem 1rem; margin: 0; background: transparent; cursor: pointer;
+				transition: background 0.16s ease, color 0.16s ease;
+			}
+			.kqs-ca-customer-card:hover { background: rgba(10, 10, 10, 0.04); }
+			.kqs-ca-customer-card.is-selected {
+				border-color: transparent; border-bottom-color: var(--kqs-ink);
+				background: var(--kqs-ink); color: #ffffff;
+				animation: kqs-ca-select-pulse 0.28s ease;
+				box-shadow: inset 3px 0 0 var(--kqs-signal);
+			}
+			.kqs-ca-customer-name {
+				font-family: var(--kqs-font-display); font-size: 0.95rem; font-weight: 700;
+				color: inherit; line-height: 1.25; letter-spacing: -0.02em;
+			}
+			.kqs-ca-customer-phone {
+				font-size: 0.8rem; opacity: 0.72; margin-top: 0.15rem;
+			}
+			.kqs-ca-customer-badges {
+				display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem;
+			}
+			.kqs-ca-badge {
+				font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.4rem; border-radius: 4px;
+				background: rgba(10, 10, 10, 0.06); color: inherit;
+			}
+			.kqs-ca-customer-card:not(.is-selected) .kqs-ca-badge-owes {
+				background: var(--kqs-signal-soft); color: #7f0a1c;
+			}
+			.kqs-ca-customer-card:not(.is-selected) .kqs-ca-badge-credit {
+				background: rgba(10, 10, 10, 0.06); color: var(--kqs-ink);
+			}
+			.kqs-ca-customer-card:not(.is-selected) .kqs-ca-badge-layby {
+				background: rgba(10, 10, 10, 0.06); color: var(--kqs-ink);
+			}
+			.kqs-ca-customer-card.is-selected .kqs-ca-badge {
+				background: rgba(255, 255, 255, 0.14); color: #fff;
+			}
+			.kqs-ca-list-meta {
+				font-size: 0.72rem; color: var(--kqs-mute);
+				padding: 0.45rem 1rem 0.25rem;
+			}
+			.kqs-ca-list-empty {
+				padding: 1.5rem 0.85rem; text-align: center; color: var(--kqs-mute);
+				font-size: 0.88rem; line-height: 1.45;
+			}
+			.kqs-ca-sidebar-foot {
+				padding: 0.75rem 1rem; border-top: 1px solid var(--kqs-line);
+			}
+			.kqs-ca-sidebar-foot .btn {
+				width: 100%; border-radius: 4px; font-size: 0.85rem; font-weight: 700; min-height: 2.75rem;
+			}
+			.kqs-ca-main {
+				flex: 1 1 auto; min-width: 0; overflow-x: hidden; overflow-y: auto;
+				padding: 1.15rem 1.35rem 1.5rem;
+			}
+			.kqs-ca-step-enter { animation: kqs-ca-step-in 0.32s ease-out; }
+			.kqs-ca-empty {
+				display: flex; flex-direction: column; justify-content: center;
+				min-height: min(58vh, 28rem); max-width: 28rem; padding: 1rem 0.25rem;
+				text-align: left; color: var(--kqs-mute);
+			}
+			.kqs-ca-brand-mark {
+				font-family: var(--kqs-font-display); font-weight: 800; font-size: 0.72rem;
+				letter-spacing: 0.22em; text-transform: uppercase; color: var(--kqs-signal);
+				margin: 0 0 0.85rem;
+			}
+			.kqs-ca-empty-title {
+				font-family: var(--kqs-font-display); font-size: clamp(1.55rem, 2.4vw, 2.1rem);
+				font-weight: 800; color: var(--kqs-ink); margin: 0 0 0.4rem;
+				letter-spacing: -0.045em; line-height: 1.05;
+			}
+			.kqs-ca-empty p { margin: 0; font-size: 0.95rem; line-height: 1.5; }
+			.kqs-ca-hero {
+				padding: 0.15rem 0 1rem; margin-bottom: 0.85rem;
+				border-bottom: 1px solid var(--kqs-line); background: transparent; border-radius: 0;
+			}
+			.kqs-ca-hero-top {
+				display: flex; flex-wrap: wrap; align-items: flex-start;
+				justify-content: space-between; gap: 0.75rem;
+			}
+			.kqs-ca-hero-name {
+				font-family: var(--kqs-font-display); font-size: clamp(1.45rem, 2.4vw, 2rem);
+				font-weight: 800; margin: 0; letter-spacing: -0.045em; line-height: 1.05;
+				color: var(--kqs-ink) !important;
+			}
+			.kqs-ca-hero-meta {
+				font-size: 0.88rem; color: var(--kqs-mute) !important; margin-top: 0.3rem;
+			}
+			.kqs-ca-app .btn {
+				font-family: var(--kqs-font-ui); font-weight: 600; border-radius: 4px;
+				min-height: 2.65rem; padding: 0.55rem 1.1rem;
+				transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+			}
+			.kqs-ca-app .btn:active { transform: translateY(1px); }
+			.kqs-ca-app .btn-primary {
+				background: var(--kqs-ink) !important; border-color: var(--kqs-ink) !important;
+				color: #fff !important; font-weight: 700;
+				box-shadow: 3px 3px 0 rgba(200, 16, 46, 0.35);
+			}
+			.kqs-ca-app .btn-primary:hover {
+				background: var(--kqs-ink-soft) !important; border-color: var(--kqs-ink-soft) !important;
+			}
+			.kqs-ca-app .btn-default {
+				background: transparent !important; border: 1.5px solid var(--kqs-ink) !important;
+				color: var(--kqs-ink) !important;
+			}
+			.kqs-ca-hero-actions .btn { font-size: 0.8rem; font-weight: 600; min-height: 2.4rem; }
+			.kqs-ca-stat-grid {
+				display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+				gap: 0.65rem; margin-top: 1rem;
+			}
+			.kqs-ca-stat-card {
+				padding: 0.75rem 0.85rem 0.7rem; background: #fafafa;
+				border: 1px solid var(--kqs-line); border-radius: 4px;
+			}
+			.kqs-ca-stat-card.is-hero {
+				background: var(--kqs-ink); border-color: var(--kqs-ink); color: #fff;
+			}
+			.kqs-ca-stat-label {
+				font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em;
+				color: var(--kqs-mute); font-weight: 700;
+			}
+			.kqs-ca-stat-card.is-hero .kqs-ca-stat-label { color: rgba(255, 255, 255, 0.65); }
+			.kqs-ca-stat-value {
+				font-family: var(--kqs-font-display); font-size: 1.25rem; font-weight: 700;
+				color: var(--kqs-ink); margin-top: 0.25rem; letter-spacing: -0.03em;
+			}
+			.kqs-ca-stat-card.is-hero .kqs-ca-stat-value { color: #fff; font-size: 1.45rem; }
+			.kqs-ca-stat-value.is-danger { color: var(--kqs-signal); }
+			.kqs-ca-stat-card.is-hero .kqs-ca-stat-value.is-danger { color: #f5c6cc; }
+			.kqs-ca-stat-value.is-success { color: var(--kqs-ink); }
+			.kqs-ca-tabs {
+				display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.85rem;
+			}
+			.kqs-ca-tab {
+				border: 1.5px solid var(--kqs-line); background: transparent; border-radius: 4px;
+				padding: 0.45rem 0.85rem; font-size: 0.8rem; font-weight: 700;
+				color: var(--kqs-mute); cursor: pointer; min-height: 2.4rem;
+				font-family: var(--kqs-font-ui);
+			}
+			.kqs-ca-tab.is-active {
+				background: var(--kqs-ink); border-color: var(--kqs-ink); color: #fff;
+				box-shadow: inset 0 -2px 0 var(--kqs-signal);
+			}
+			.kqs-ca-panel {
+				background: transparent; border: 0; border-radius: 0; padding: 0.15rem 0;
+			}
+			.kqs-ca-panel-title {
+				font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.12em; color: var(--kqs-mute); margin: 0 0 0.75rem;
+			}
+			.kqs-ca-table { width: 100%; margin-bottom: 0; font-size: 0.88rem; border: 0; }
 			.kqs-ca-table thead th {
-				background: #f8fafc;
-				font-size: 10px;
-				text-transform: uppercase;
-				letter-spacing: 0.04em;
-				color: #64748b;
-				border-bottom: 1px solid #e2e8f0;
+				background: transparent; font-size: 0.68rem; text-transform: uppercase;
+				letter-spacing: 0.1em; color: var(--kqs-mute); border-bottom: 1px solid var(--kqs-line);
+				font-weight: 700;
 			}
 			.kqs-ca-table tbody td {
-				vertical-align: middle;
-				border-color: #f1f5f9;
+				vertical-align: middle; border-color: var(--kqs-line); padding: 0.7rem 0.4rem;
 			}
 			.kqs-ca-history-row {
-				display: grid;
-				grid-template-columns: auto 1fr auto;
-				gap: 0.65rem;
-				align-items: start;
-				padding: 0.55rem 0;
-				border-bottom: 1px solid #f1f5f9;
+				display: grid; grid-template-columns: auto 1fr auto; gap: 0.75rem;
+				align-items: start; padding: 0.8rem 0; border-bottom: 1px solid var(--kqs-line);
 			}
-			.kqs-ca-history-row:last-child { border-bottom: none; }
+			.kqs-ca-history-row:last-child { border-bottom: 1px solid var(--kqs-line); }
 			.kqs-ca-history-icon {
-				width: 2rem;
-				height: 2rem;
-				border-radius: 999px;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				font-size: 11px;
-				font-weight: 700;
+				width: 2rem; height: 2rem; border-radius: 4px; display: flex;
+				align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800;
+				background: rgba(10, 10, 10, 0.06); color: var(--kqs-ink);
+				font-family: var(--kqs-font-display);
 			}
-			.kqs-ca-history-icon.debit { background: #fef2f2; color: #b91c1c; }
-			.kqs-ca-history-icon.credit { background: #ecfdf5; color: #047857; }
-			.kqs-ca-history-icon.credit_customer { background: #eff6ff; color: #1d4ed8; }
-			.kqs-ca-history-label { font-weight: 700; color: #0f172a; font-size: 13px; }
-			.kqs-ca-history-meta { font-size: 11px; color: #64748b; margin-top: 0.1rem; }
-			.kqs-ca-history-amount { font-weight: 800; font-size: 13px; text-align: right; }
-			.kqs-ca-history-amount.debit { color: #b91c1c; }
-			.kqs-ca-history-amount.credit { color: #047857; }
-			.kqs-ca-history-amount.credit_customer { color: #1d4ed8; }
-			.kqs-ca-pay-grid {
-				display: grid;
-				grid-template-columns: 1fr 1fr;
-				gap: 0.75rem;
+			.kqs-ca-history-icon.debit { background: var(--kqs-signal-soft); color: #7f0a1c; }
+			.kqs-ca-history-icon.credit { background: rgba(10, 10, 10, 0.06); color: var(--kqs-ink); }
+			.kqs-ca-history-icon.credit_customer { background: rgba(10, 10, 10, 0.06); color: var(--kqs-ink); }
+			.kqs-ca-history-label {
+				font-family: var(--kqs-font-display); font-weight: 700; color: var(--kqs-ink);
+				font-size: 0.92rem; letter-spacing: -0.02em;
+			}
+			.kqs-ca-history-meta { font-size: 0.78rem; color: var(--kqs-mute); margin-top: 0.15rem; }
+			.kqs-ca-history-amount {
+				font-family: var(--kqs-font-display); font-weight: 800; font-size: 0.95rem;
+				text-align: right; letter-spacing: -0.02em;
+			}
+			.kqs-ca-history-amount.debit { color: var(--kqs-signal); }
+			.kqs-ca-history-amount.credit { color: var(--kqs-ink); }
+			.kqs-ca-history-amount.credit_customer { color: var(--kqs-ink); }
+			.kqs-ca-pay-header {
+				display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+				gap: 0.85rem 1.25rem; margin-bottom: 1.15rem; padding-bottom: 1rem;
+				border-bottom: 1px solid var(--kqs-line);
+			}
+			.kqs-ca-pay-eyebrow {
+				font-family: var(--kqs-font-display); font-size: 0.7rem; font-weight: 700;
+				letter-spacing: 0.16em; text-transform: uppercase; color: var(--kqs-mute);
+				margin: 0 0 0.35rem;
+			}
+			.kqs-ca-money-hero {
+				font-family: var(--kqs-font-display); font-size: clamp(1.85rem, 3.2vw, 2.55rem);
+				font-weight: 800; letter-spacing: -0.05em; line-height: 1; color: var(--kqs-ink);
 			}
 			.kqs-ca-pay-summary {
-				display: grid;
-				grid-template-columns: repeat(2, minmax(0, 1fr));
-				gap: 0.45rem;
-				margin-bottom: 0.65rem;
+				display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+				gap: 0.65rem; margin-bottom: 1.1rem;
 			}
 			.kqs-ca-pay-card {
-				border: 1px solid #e2e8f0;
-				border-radius: 10px;
-				padding: 0.5rem 0.65rem;
-				background: #f8fafc;
+				border: 1px solid var(--kqs-line); border-radius: 4px;
+				padding: 0.7rem 0.8rem; background: #fafafa;
 			}
-			.kqs-ca-pay-card .label { font-size: 10px; color: #64748b; text-transform: uppercase; }
-			.kqs-ca-pay-card .value { font-size: 1rem; font-weight: 800; color: #0f172a; }
+			.kqs-ca-pay-card.is-hero {
+				background: var(--kqs-ink); border-color: var(--kqs-ink); color: #fff;
+			}
+			.kqs-ca-pay-card .label {
+				font-size: 0.68rem; color: var(--kqs-mute); text-transform: uppercase;
+				letter-spacing: 0.1em; font-weight: 700;
+			}
+			.kqs-ca-pay-card.is-hero .label { color: rgba(255, 255, 255, 0.65); }
+			.kqs-ca-pay-card .value {
+				font-family: var(--kqs-font-display); font-size: 1.2rem; font-weight: 800;
+				color: var(--kqs-ink); margin-top: 0.2rem; letter-spacing: -0.03em;
+			}
+			.kqs-ca-pay-card.is-hero .value { color: #fff; font-size: 1.4rem; }
+			.kqs-ca-section-label {
+				font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.12em; color: var(--kqs-mute); margin: 0 0 0.55rem;
+			}
+			.kqs-ca-pay-grid {
+				display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(12rem, 16rem);
+				gap: 1.25rem 1.5rem; align-items: start;
+			}
 			.kqs-ca-mop-grid {
-				display: grid;
-				grid-template-columns: repeat(2, minmax(0, 1fr));
-				gap: 0.4rem;
-				margin-bottom: 0.55rem;
+				display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+				gap: 0.55rem; margin-bottom: 1rem;
 			}
 			.kqs-ca-mop-tile {
-				border: 1px solid #e2e8f0;
-				border-radius: 10px;
-				padding: 0.45rem 0.55rem;
-				background: #fff;
-				cursor: pointer;
-				text-align: left;
+				position: relative; display: flex; flex-direction: column; align-items: flex-start;
+				gap: 0.2rem; min-height: 4.25rem; border: 2px solid var(--kqs-line);
+				border-radius: 4px; padding: 0.75rem 0.8rem 0.7rem 2.35rem;
+				background: var(--kqs-surface); cursor: pointer; text-align: left; width: 100%;
+				transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 			}
+			.kqs-ca-mop-tile:hover { border-color: var(--kqs-ink); }
 			.kqs-ca-mop-tile.is-selected {
-				border-color: #2563eb;
-				background: #eff6ff;
+				border-color: var(--kqs-ink); background: var(--kqs-ink); color: #fff;
+				animation: kqs-ca-select-pulse 0.28s ease;
 			}
-			.kqs-ca-mop-label { font-size: 11px; font-weight: 700; color: #0f172a; }
-			.kqs-ca-mop-amount { font-size: 12px; font-weight: 700; color: #2563eb; margin-top: 0.15rem; min-height: 1rem; }
-			.kqs-ca-numpad-panel {
-				display: flex;
-				flex-direction: column;
-				min-width: 0;
+			.kqs-ca-mop-check {
+				position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%);
+				width: 1.05rem; height: 1.05rem; border: 1.5px solid currentColor;
+				border-radius: 2px; display: flex; align-items: center; justify-content: center;
+				font-size: 0.72rem; font-weight: 800; line-height: 1; opacity: 0.35;
 			}
+			.kqs-ca-mop-tile.is-selected .kqs-ca-mop-check {
+				opacity: 1; background: var(--kqs-signal); border-color: var(--kqs-signal); color: #fff;
+			}
+			.kqs-ca-mop-tile.is-selected .kqs-ca-mop-check::after { content: "✓"; }
+			.kqs-ca-mop-label {
+				font-family: var(--kqs-font-display); font-size: 1rem; font-weight: 700;
+				color: inherit; letter-spacing: -0.02em;
+			}
+			.kqs-ca-mop-amount {
+				font-size: 0.82rem; font-weight: 600; min-height: 1.1em; opacity: 0.75;
+			}
+			.kqs-ca-money-field {
+				margin-bottom: 0.85rem; padding: 0.85rem 0.95rem;
+				border: 2px solid var(--kqs-ink); border-radius: 4px; background: var(--kqs-surface);
+				box-shadow: 4px 4px 0 rgba(10, 10, 10, 0.08);
+				transition: box-shadow 0.2s ease, background 0.2s ease;
+			}
+			.kqs-ca-money-field.is-focused {
+				background: #fff; animation: kqs-ca-money-glow 0.22s ease forwards;
+			}
+			.kqs-ca-money-field--secondary {
+				border-width: 1.5px; box-shadow: none; background: #fafafa;
+			}
+			.kqs-ca-money-field .form-group { margin-bottom: 0 !important; }
+			.kqs-ca-money-field .control-label,
+			.kqs-ca-money-field .help-box { display: none !important; }
+			.kqs-ca-money-field::before {
+				content: attr(data-label); display: block; font-size: 0.68rem; font-weight: 700;
+				text-transform: uppercase; letter-spacing: 0.12em; color: var(--kqs-mute); margin-bottom: 0.35rem;
+			}
+			.kqs-ca-money-field .form-control,
+			.kqs-ca-money-field input {
+				border: 0 !important; background: transparent !important; box-shadow: none !important;
+				outline: none !important; font-family: var(--kqs-font-display) !important;
+				font-size: clamp(1.75rem, 3.5vw, 2.35rem) !important; font-weight: 800 !important;
+				letter-spacing: -0.045em !important; color: var(--kqs-ink) !important;
+				padding: 0.15rem 0 !important; min-height: 2.6rem !important; height: auto !important;
+				line-height: 1.1 !important;
+			}
+			.kqs-ca-money-field--secondary .form-control,
+			.kqs-ca-money-field--secondary input {
+				font-size: clamp(1.25rem, 2.4vw, 1.65rem) !important;
+			}
+			.kqs-ca-entry-change {
+				margin-top: 0.35rem; padding: 0.85rem 0.95rem; border-radius: 4px;
+				background: var(--kqs-ink); color: #fff;
+			}
+			.kqs-ca-entry-change .small { color: rgba(255, 255, 255, 0.7) !important; }
+			.kqs-ca-entry-change-amount {
+				display: block; font-family: var(--kqs-font-display); font-size: 1.35rem;
+				font-weight: 800; letter-spacing: -0.03em; color: #f5c6cc;
+			}
+			.kqs-ca-numpad-panel { display: flex; flex-direction: column; min-width: 0; }
 			.kqs-ca-numpad-panel .number-pad,
 			.kqs-ca-numpad-panel .kqs-ca-numpad {
-				position: static;
-				flex: 1 1 auto;
-				display: block;
-				width: 100%;
-				min-height: 220px;
+				position: static; flex: 1 1 auto; display: block; width: 100%; min-height: 240px;
 			}
 			.kqs-ca-numpad-panel .numpad-container {
-				display: grid;
-				grid-template-columns: repeat(3, minmax(0, 1fr));
-				gap: 0.5rem;
-				width: 100%;
-				background-color: #f8fafc;
-				border: 1px solid #e2e8f0;
-				border-radius: 10px;
-				padding: 0.5rem;
-				box-sizing: border-box;
+				display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 0.55rem; width: 100%; box-sizing: border-box;
+				background: transparent; border: 0; border-radius: 0; padding: 0;
 			}
 			.kqs-ca-numpad-panel .numpad-btn {
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				min-height: 2.75rem;
-				padding: 0.45rem;
-				border-radius: 8px;
-				border: 1px solid #e2e8f0;
-				background: #fff;
-				box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-				font-size: 15px;
-				font-weight: 700;
-				color: #0f172a;
-				cursor: pointer;
-				user-select: none;
-				width: 100%;
+				display: flex; align-items: center; justify-content: center;
+				min-height: 3.35rem; padding: 0.55rem; border-radius: 4px;
+				border: 1.5px solid var(--kqs-line); background: var(--kqs-surface);
+				box-shadow: none; font-family: var(--kqs-font-display);
+				font-size: 1.2rem; font-weight: 700; color: var(--kqs-ink);
+				cursor: pointer; user-select: none; width: 100%;
+				transition: background 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
 			}
 			.kqs-ca-numpad-panel .numpad-btn:hover {
-				background-color: #f1f5f9;
+				background: rgba(10, 10, 10, 0.04); border-color: var(--kqs-ink);
 			}
-			.kqs-ca-pay-actions { margin-top: 0.65rem; }
-			.kqs-ca-pay-actions .btn { border-radius: 8px; font-weight: 700; }
+			.kqs-ca-numpad-panel .numpad-btn:active {
+				transform: translateY(1px); background: var(--kqs-ink); color: #fff;
+			}
+			.kqs-ca-pay-actions { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--kqs-line); }
+			.kqs-ca-pay-actions .btn {
+				border-radius: 4px; font-weight: 700; min-height: 3.1rem; font-size: 1.02rem; min-width: 11rem;
+			}
 			.kqs-ca-quick-actions {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.4rem;
-				margin-top: 0.65rem;
+				display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.65rem;
 			}
-			.kqs-ca-quick-actions .btn { border-radius: 8px; font-size: 11px; font-weight: 600; }
+			.kqs-ca-quick-actions .btn { border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
 			@media (max-width: 900px) {
+				.kqs-ca-list-panel { flex-basis: 17rem; width: 17rem; }
 				.kqs-ca-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 				.kqs-ca-pay-grid { grid-template-columns: 1fr; }
+			}
+			@media (max-width: 768px) {
+				.kqs-ca-app { flex-direction: column; }
+				.kqs-ca-list-panel {
+					flex: 0 0 auto; width: 100%; max-height: 38vh;
+					border-right: 0; border-bottom: 1px solid var(--kqs-line);
+				}
 			}
 		`;
 		document.head.appendChild(style);
@@ -2077,8 +2009,9 @@ kqs_retail.pos_customer_account = (function () {
 					<div class="kqs-ca-list-head">
 						<p class="kqs-ca-list-title">${__("Customers")}</p>
 						<div class="kqs-ca-search-row">
-							<input type="search" class="form-control input-sm" id="kqs-ca-search"
-								placeholder="${__("Name or mobile")}" />
+							<input type="search" class="kqs-ca-search-input" id="kqs-ca-search"
+								placeholder="${__("Name or mobile")}"
+								autocomplete="off" enterkeyhint="search" />
 						</div>
 						<div class="kqs-ca-filter-row">
 							<button type="button" class="kqs-ca-filter-btn is-active" data-filter="all">${__("All")}</button>
@@ -2143,8 +2076,8 @@ kqs_retail.pos_customer_account = (function () {
 
 	function render_empty_main() {
 		layout.find("#kqs-ca-main").html(`
-			<div class="kqs-ca-empty">
-				<div class="kqs-ca-empty-icon">ðŸ‘¤</div>
+			<div class="kqs-ca-empty kqs-ca-step-enter">
+				<p class="kqs-ca-brand-mark">KQS</p>
 				<div class="kqs-ca-empty-title">${__("Customer Account")}</div>
 				<p>${__(
 					"Search and select a customer to view balances, transaction history, open invoices, laybys, and collect payments."
@@ -2159,9 +2092,9 @@ kqs_retail.pos_customer_account = (function () {
 		if (!rows?.length) {
 			$meta.text(__("No customers match this search."));
 			$list.html(
-				`<p class="text-muted small text-center" style="padding:1rem 0">${__(
+				`<div class="kqs-ca-list-empty">${__(
 					"Try a different name, phone number, or filter."
-				)}</p>`
+				)}</div>`
 			);
 			return;
 		}
@@ -2311,42 +2244,44 @@ kqs_retail.pos_customer_account = (function () {
 		else if (current_tab === "pay") panel_html = render_pay_panel(currency);
 
 		layout.find("#kqs-ca-main").html(`
-			<div class="kqs-ca-hero">
-				<div class="kqs-ca-hero-top">
-					<div>
-						<h2 class="kqs-ca-hero-name">${esc(name)}</h2>
-						<div class="kqs-ca-hero-meta">
-							${phone ? esc(phone) + CA_META_SEP : ""}${esc(selected_customer)}
-							${customer_summary.allow_account_sales ? CA_META_SEP + __("Account sales enabled") : ""}
+			<div class="kqs-ca-step-enter">
+				<div class="kqs-ca-hero">
+					<div class="kqs-ca-hero-top">
+						<div>
+							<h2 class="kqs-ca-hero-name">${esc(name)}</h2>
+							<div class="kqs-ca-hero-meta">
+								${phone ? esc(phone) + CA_META_SEP : ""}${esc(selected_customer)}
+								${customer_summary.allow_account_sales ? CA_META_SEP + __("Account sales enabled") : ""}
+							</div>
+						</div>
+						<div class="kqs-ca-hero-actions">
+							<button type="button" class="btn btn-default btn-xs kqs-ca-refresh-customer">${__("Refresh")}</button>
+							<button type="button" class="btn btn-default btn-xs kqs-ca-use-on-sale">${__("Use on sale")}</button>
+							${ar > 0 ? `<button type="button" class="btn btn-primary btn-xs kqs-ca-go-pay">${__("Collect payment")}</button>` : ""}
 						</div>
 					</div>
-					<div class="kqs-ca-hero-actions">
-						<button type="button" class="btn btn-default btn-xs kqs-ca-refresh-customer">${__("Refresh")}</button>
-						<button type="button" class="btn btn-default btn-xs kqs-ca-use-on-sale">${__("Use on sale")}</button>
-						${ar > 0 ? `<button type="button" class="btn btn-primary btn-xs kqs-ca-go-pay">${__("Collect payment")}</button>` : ""}
+					<div class="kqs-ca-stat-grid">
+						<div class="kqs-ca-stat-card${ar > 0 ? " is-hero" : ""}">
+							<div class="kqs-ca-stat-label">${__("Amount Owed")}</div>
+							<div class="kqs-ca-stat-value ${ar > 0 ? "is-danger" : ""}">${money(ar, currency)}</div>
+						</div>
+						<div class="kqs-ca-stat-card">
+							<div class="kqs-ca-stat-label">${__("Store Credit")}</div>
+							<div class="kqs-ca-stat-value ${credit > 0 ? "is-success" : ""}">${money(credit, currency)}</div>
+						</div>
+						<div class="kqs-ca-stat-card">
+							<div class="kqs-ca-stat-label">${__("Layby Balance")}</div>
+							<div class="kqs-ca-stat-value">${money(layby, currency)}</div>
+						</div>
+						<div class="kqs-ca-stat-card">
+							<div class="kqs-ca-stat-label">${__("Credit Available")}</div>
+							<div class="kqs-ca-stat-value">${limit > 0 ? money(available, currency) : __("Not set")}</div>
+						</div>
 					</div>
 				</div>
-				<div class="kqs-ca-stat-grid">
-					<div class="kqs-ca-stat-card">
-						<div class="kqs-ca-stat-label">${__("Amount Owed")}</div>
-						<div class="kqs-ca-stat-value ${ar > 0 ? "is-danger" : ""}">${money(ar, currency)}</div>
-					</div>
-					<div class="kqs-ca-stat-card">
-						<div class="kqs-ca-stat-label">${__("Store Credit")}</div>
-						<div class="kqs-ca-stat-value ${credit > 0 ? "is-success" : ""}">${money(credit, currency)}</div>
-					</div>
-					<div class="kqs-ca-stat-card">
-						<div class="kqs-ca-stat-label">${__("Layby Balance")}</div>
-						<div class="kqs-ca-stat-value">${money(layby, currency)}</div>
-					</div>
-					<div class="kqs-ca-stat-card">
-						<div class="kqs-ca-stat-label">${__("Credit Available")}</div>
-						<div class="kqs-ca-stat-value">${limit > 0 ? money(available, currency) : __("Not set")}</div>
-					</div>
-				</div>
+				<div class="kqs-ca-tabs">${tabs_html}</div>
+				<div class="kqs-ca-panel">${panel_html}</div>
 			</div>
-			<div class="kqs-ca-tabs">${tabs_html}</div>
-			<div class="kqs-ca-panel">${panel_html}</div>
 		`);
 	}
 
@@ -2484,48 +2419,51 @@ kqs_retail.pos_customer_account = (function () {
 			return `<p class="text-muted">${__("No cash or mobile payment modes are configured on this POS profile.")}</p>`;
 		}
 		return `
-			<p class="kqs-ca-panel-title">${__("Collect account payment")}</p>
-			<div class="kqs-ca-pay-summary">
-				<div class="kqs-ca-pay-card">
-					<div class="label">${__("Amount owed")}</div>
-					<div class="value kqs-ca-balance-due">${money(balance, currency)}</div>
+			<div class="kqs-ca-pay-header">
+				<div>
+					<p class="kqs-ca-pay-eyebrow">${__("Collect payment")}</p>
+					<div class="kqs-ca-money-hero kqs-ca-balance-due">${money(balance, currency)}</div>
 				</div>
-				<div class="kqs-ca-pay-card">
-					<div class="label">${__("Paying today")}</div>
-					<div class="value kqs-ca-paying-today">${money(0, currency)}</div>
-				</div>
-				<div class="kqs-ca-pay-card">
-					<div class="label">${__("Remaining")}</div>
-					<div class="value kqs-ca-remaining">${money(balance, currency)}</div>
-				</div>
-				<div class="kqs-ca-pay-card kqs-ca-change-card d-none">
-					<div class="label">${__("Change")}</div>
-					<div class="value kqs-ca-change">${money(0, currency)}</div>
+				<div class="kqs-ca-pay-summary" style="margin:0;flex:1;min-width:14rem">
+					<div class="kqs-ca-pay-card">
+						<div class="label">${__("Paying today")}</div>
+						<div class="value kqs-ca-paying-today">${money(0, currency)}</div>
+					</div>
+					<div class="kqs-ca-pay-card">
+						<div class="label">${__("Remaining")}</div>
+						<div class="value kqs-ca-remaining">${money(balance, currency)}</div>
+					</div>
+					<div class="kqs-ca-pay-card kqs-ca-change-card d-none">
+						<div class="label">${__("Change")}</div>
+						<div class="value kqs-ca-change">${money(0, currency)}</div>
+					</div>
 				</div>
 			</div>
 			<div class="kqs-ca-pay-grid">
 				<div>
-					<p class="small text-muted">${__("Tap a method, enter amount on keypad.")}</p>
+					<p class="kqs-ca-section-label">${__("Payment method")}</p>
 					<div class="kqs-ca-mop-grid" id="kqs-ca-mop-grid">
 						${modes
 							.map(
 								(mode) => `<button type="button" class="kqs-ca-mop-tile" data-mode-key="${sanitize_mode_key(mode)}">
-								<div class="kqs-ca-mop-label">${esc(mode)}</div>
-								<div class="kqs-ca-mop-amount" data-mop="${sanitize_mode_key(mode)}"></div>
-							</button>`
+									<span class="kqs-ca-mop-check" aria-hidden="true"></span>
+									<div class="kqs-ca-mop-label">${esc(mode)}</div>
+									<div class="kqs-ca-mop-amount" data-mop="${sanitize_mode_key(mode)}"></div>
+								</button>`
 							)
 							.join("")}
 					</div>
 					<div id="kqs-ca-entry-fields"></div>
-					<div class="kqs-ca-entry-change" style="display:none;margin-top:0.45rem;padding:0.45rem 0.55rem;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0">
+					<div class="kqs-ca-entry-change" style="display:none">
 						<span class="small text-muted">${__("Change")}</span>
-						<span class="kqs-ca-entry-change-amount" style="display:block;font-size:1.15rem;font-weight:800;color:#0f172a"></span>
+						<span class="kqs-ca-entry-change-amount"></span>
 					</div>
 					<div class="kqs-ca-pay-actions">
 						<button type="button" class="btn btn-primary btn-lg kqs-ca-record-payment">${__("Record Payment")}</button>
 					</div>
 				</div>
 				<div class="kqs-ca-numpad-panel">
+					<p class="kqs-ca-section-label">${__("Keypad")}</p>
 					<div class="kqs-ca-numpad number-pad" id="kqs-ca-numpad"></div>
 				</div>
 			</div>
@@ -2551,9 +2489,15 @@ kqs_retail.pos_customer_account = (function () {
 
 		const $fields = layout.find("#kqs-ca-entry-fields");
 		$fields.html(`
-			<div class="kqs-ca-entry-paying" style="margin-top:0.5rem"></div>
-			<div class="kqs-ca-entry-tendered" style="margin-top:0.35rem"></div>
+			<div class="kqs-ca-money-field kqs-ca-entry-paying" data-label="${__("Paying")}"></div>
+			<div class="kqs-ca-money-field kqs-ca-money-field--secondary kqs-ca-entry-tendered" data-label="${__("Customer gave")}"></div>
 		`);
+		$fields.find(".kqs-ca-money-field").on("focusin", function () {
+			$(this).addClass("is-focused");
+		});
+		$fields.find(".kqs-ca-money-field").on("focusout", function () {
+			$(this).removeClass("is-focused");
+		});
 
 		payment_state.paying_control = frappe.ui.form.make_control({
 			df: {
@@ -3052,20 +2996,62 @@ kqs_retail.pos_layby_hub = (function () {
 
 	function inject_styles() {
 		const style_id = `kqs-layby-hub-styles-v${KQS_LAYBY_HUB_VERSION}`;
+		document.querySelectorAll('[id^="kqs-layby-hub-styles"]').forEach((el) => el.remove());
 		if (document.getElementById(style_id)) return;
+		// KQS brand fonts (same as kqs-web): Manrope UI + Unbounded display
+		let fonts = document.getElementById("kqs-layby-hub-fonts");
+		if (!fonts) {
+			fonts = document.createElement("link");
+			fonts.id = "kqs-layby-hub-fonts";
+			fonts.rel = "stylesheet";
+			document.head.appendChild(fonts);
+		}
+		fonts.href =
+			"https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;600;700;800;900&display=swap";
 		const style = document.createElement("style");
 		style.id = style_id;
 		style.textContent = `
+			.kqs-layby-hub-app,
+			.kqs-pos-layby-hub-layer,
+			.point-of-sale-app.kqs-layby-hub-mount-host {
+				--kqs-ink: #0a0a0a;
+				--kqs-ink-soft: #1c1917;
+				--kqs-paper: #ffffff;
+				--kqs-paper-deep: #f5f5f5;
+				--kqs-fog: #e5e5e5;
+				--kqs-mute: #6b6b6b;
+				--kqs-line: rgba(10, 10, 10, 0.1);
+				--kqs-surface: #ffffff;
+				--kqs-signal: #c8102e;
+				--kqs-signal-soft: #fdecee;
+				--kqs-font-ui: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+				--kqs-font-display: "Unbounded", "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+			}
+
+			@keyframes kqs-layby-step-in {
+				from { opacity: 0; transform: translateY(10px); }
+				to { opacity: 1; transform: none; }
+			}
+			@keyframes kqs-layby-select-pulse {
+				0% { transform: scale(1); }
+				45% { transform: scale(1.02); }
+				100% { transform: scale(1); }
+			}
+			@keyframes kqs-layby-money-glow {
+				from { box-shadow: 0 0 0 0 rgba(10, 10, 10, 0); }
+				to { box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.14); }
+			}
+
 			[data-page-route="point-of-sale"] .layout-main-section.kqs-layby-hub-mount {
 				padding-bottom: 0 !important; margin-bottom: 0 !important;
-				overflow: hidden; background: #f8fafc !important;
+				overflow: hidden; background: #ffffff !important;
 			}
 			.point-of-sale-app.kqs-layby-hub-mount-host {
-				width: 100%; box-sizing: border-box; background: #f8fafc;
+				width: 100%; box-sizing: border-box; background: #ffffff;
 			}
 			.kqs-pos-layby-hub-layer {
 				display: none; flex: 1 1 auto; width: 100%; min-height: 0;
-				overflow: hidden; background: #f8fafc;
+				overflow: hidden; background: #ffffff;
 			}
 			.kqs-pos-layby-hub-layer:not(.d-none) {
 				display: flex; flex-direction: column;
@@ -3073,178 +3059,463 @@ kqs_retail.pos_layby_hub = (function () {
 			.kqs-layby-hub-app {
 				flex: 1 1 auto; display: flex; width: 100%; height: 100%;
 				min-height: 0; box-sizing: border-box;
+				font-family: var(--kqs-font-ui);
+				color: var(--kqs-ink);
+				-webkit-font-smoothing: antialiased;
 			}
 			.kqs-layby-list-panel {
-				flex: 0 0 18rem; width: 18rem; background: #fff;
-				border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; min-height: 0;
+				flex: 0 0 20rem; width: 20rem; min-height: 0;
+				display: flex; flex-direction: column;
+				background: rgba(255, 255, 255, 0.92);
+				border-right: 1px solid var(--kqs-line);
+				backdrop-filter: blur(8px);
 			}
-			.kqs-layby-list-head { padding: 0.75rem 0.8rem; border-bottom: 1px solid #e2e8f0; }
+			.kqs-layby-list-head {
+				padding: 1.1rem 1rem 0.95rem;
+				border-bottom: 1px solid var(--kqs-line);
+			}
 			.kqs-layby-list-title {
-				font-size: 11px; font-weight: 700; text-transform: uppercase;
-				letter-spacing: 0.07em; color: #64748b; margin: 0 0 0.45rem;
+				font-family: var(--kqs-font-display);
+				font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.14em; color: var(--kqs-mute); margin: 0 0 0.65rem;
 			}
 			.kqs-layby-search-row { display: flex; gap: 0.35rem; }
-			.kqs-layby-search-row input { flex: 1; border-radius: 8px; font-size: 12px; }
-			.kqs-layby-agreement-list { flex: 1 1 auto; overflow-y: auto; padding: 0.5rem; }
+			.kqs-layby-search-input {
+				flex: 1; width: 100%; min-height: 3rem; padding: 0.7rem 0.9rem;
+				border: 1.5px solid var(--kqs-ink); border-radius: 4px;
+				background: var(--kqs-surface); color: var(--kqs-ink);
+				font-family: var(--kqs-font-ui); font-size: 1rem; font-weight: 500;
+				outline: none; box-shadow: 3px 3px 0 rgba(10, 10, 10, 0.08);
+				transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+			}
+			.kqs-layby-search-input::placeholder { color: var(--kqs-mute); font-weight: 400; }
+			.kqs-layby-search-input:focus {
+				background: #fff;
+				box-shadow: 3px 3px 0 rgba(10, 10, 10, 0.16), 0 0 0 3px rgba(10, 10, 10, 0.1);
+			}
+			.kqs-layby-agreement-list {
+				flex: 1 1 auto; overflow-y: auto; padding: 0;
+			}
+			.kqs-layby-list-empty {
+				padding: 1.5rem 0.85rem; text-align: center; color: var(--kqs-mute);
+				font-size: 0.88rem; line-height: 1.45;
+			}
 			.kqs-layby-agreement-card {
-				display: block; width: 100%; text-align: left; border: 1px solid #e2e8f0;
-				border-radius: 10px; padding: 0.6rem 0.65rem; margin-bottom: 0.45rem;
-				background: #fff; cursor: pointer;
+				display: block; width: 100%; text-align: left;
+				border: 0; border-bottom: 1px solid var(--kqs-line); border-radius: 0;
+				padding: 0.85rem 1rem; margin: 0;
+				background: transparent; cursor: pointer;
+				transition: background 0.16s ease, color 0.16s ease;
 			}
-			.kqs-layby-agreement-card:hover { border-color: #cbd5e1; }
+			.kqs-layby-agreement-card:last-child { border-bottom: 1px solid var(--kqs-line); }
+			.kqs-layby-agreement-card:hover { background: rgba(10, 10, 10, 0.04); }
 			.kqs-layby-agreement-card.is-selected {
-				border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 1px #2563eb;
+				border-color: transparent; border-bottom-color: var(--kqs-ink);
+				background: var(--kqs-ink); color: #ffffff;
+				animation: kqs-layby-select-pulse 0.28s ease;
+				box-shadow: inset 3px 0 0 var(--kqs-signal);
 			}
+			.kqs-layby-card-id {
+				font-family: var(--kqs-font-display); font-weight: 700; font-size: 0.95rem;
+				letter-spacing: -0.02em; color: inherit;
+			}
+			.kqs-layby-card-customer {
+				font-size: 0.8rem; margin-top: 0.2rem; opacity: 0.72;
+			}
+			.kqs-layby-card-balance {
+				margin-top: 0.45rem; font-family: var(--kqs-font-display);
+				font-size: 1.05rem; font-weight: 700; letter-spacing: -0.03em;
+			}
+			.kqs-layby-agreement-card:not(.is-selected) .kqs-layby-card-balance { color: var(--kqs-signal); }
 			.kqs-layby-main-panel {
-				flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 0.85rem 1rem 1.25rem;
+				flex: 1 1 auto; min-width: 0; overflow-y: auto;
+				padding: 1.15rem 1.35rem 1.5rem;
 			}
+			.kqs-layby-step-enter { animation: kqs-layby-step-in 0.32s ease-out; }
 			.kqs-layby-hero {
-				border-radius: 12px; padding: 0.85rem 1rem; background: #fff;
-				border: 1px solid #e2e8f0; margin-bottom: 0.85rem;
+				padding: 0.15rem 0 0.35rem; margin-bottom: 0.35rem;
+				background: transparent; border: 0; border-radius: 0;
 			}
-			.kqs-layby-hero h2 { font-size: 1.15rem; font-weight: 700; margin: 0 0 0.25rem; color: #0f172a; }
-			.kqs-layby-hero p { margin: 0; font-size: 12px; color: #64748b; line-height: 1.45; }
+			.kqs-layby-hero-empty {
+				min-height: min(58vh, 28rem); display: flex; flex-direction: column;
+				justify-content: center; max-width: 28rem; padding: 1rem 0.25rem;
+			}
+			.kqs-layby-brand-mark {
+				font-family: var(--kqs-font-display); font-weight: 800; font-size: 0.75rem;
+				letter-spacing: 0.22em; text-transform: uppercase; color: var(--kqs-signal);
+				margin: 0 0 0.85rem;
+			}
+			.kqs-layby-hero h2,
+			.kqs-layby-step-title {
+				font-family: var(--kqs-font-display); font-size: clamp(1.55rem, 2.4vw, 2.1rem);
+				font-weight: 800; margin: 0 0 0.4rem; color: var(--kqs-ink);
+				letter-spacing: -0.045em; line-height: 1.05;
+			}
+			.kqs-layby-hero p,
+			.kqs-layby-step-sub {
+				margin: 0; font-size: 0.95rem; color: var(--kqs-mute); line-height: 1.5;
+			}
+			.kqs-layby-detail-meta {
+				font-size: 0.95rem; color: var(--kqs-mute); margin: 0 0 1rem;
+			}
+			.kqs-layby-detail-meta strong { color: var(--kqs-ink); font-weight: 600; }
 			.kqs-layby-stat-row {
-				display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
-				gap: 0.5rem; margin: 0.75rem 0;
+				display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+				gap: 0.65rem; margin: 0.85rem 0 1.1rem;
 			}
 			.kqs-layby-stat {
-				border-radius: 10px; padding: 0.55rem 0.65rem; background: #f8fafc; border: 1px solid #e2e8f0;
+				padding: 0.75rem 0.85rem 0.7rem; background: #fafafa;
+				border: 1px solid var(--kqs-line); border-radius: 4px;
 			}
-			.kqs-layby-stat .label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 700; }
-			.kqs-layby-stat .value { font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 0.15rem; }
-			.kqs-layby-action-row {
-				display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.75rem;
+			.kqs-layby-stat.is-balance {
+				background: var(--kqs-ink); border-color: var(--kqs-ink); color: var(--kqs-surface);
 			}
-			.kqs-layby-action-row-danger {
-				display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
-				margin-top: 1.35rem; padding-top: 1rem; border-top: 1px solid #e2e8f0;
+			.kqs-layby-stat .label {
+				font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em;
+				color: var(--kqs-mute); font-weight: 700;
 			}
-			.kqs-layby-action-row-danger .kqs-layby-danger-label {
-				flex: 1 1 100%; font-size: 11px; font-weight: 600; color: #94a3b8;
-				text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.15rem;
+			.kqs-layby-stat.is-balance .label { color: rgba(255, 255, 255, 0.65); }
+			.kqs-layby-stat .value {
+				font-family: var(--kqs-font-display); font-size: 1.25rem; font-weight: 700;
+				color: var(--kqs-ink); margin-top: 0.25rem; letter-spacing: -0.03em;
 			}
-			.kqs-layby-step-panel {
-				border-radius: 12px; padding: 1rem; background: #fff; border: 1px solid #e2e8f0;
-			}
-			.kqs-layby-step-actions {
-				display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 1.25rem;
-				padding-top: 1rem; border-top: 1px solid #e2e8f0;
-			}
-			.kqs-layby-step-actions .btn-lg { min-width: 8rem; }
-			.kqs-layby-back-link {
-				display: inline-flex; align-items: center; gap: 0.35rem;
-				font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 0.75rem;
-				cursor: pointer; border: none; background: none; padding: 0;
-			}
-			.kqs-layby-back-link:hover { color: #0f172a; }
+			.kqs-layby-stat.is-balance .value { color: var(--kqs-surface); font-size: 1.45rem; }
+			.kqs-layby-items-block { margin-top: 0.35rem; border-top: 1px solid var(--kqs-line); }
 			.kqs-layby-item-row {
 				display: flex; justify-content: space-between; align-items: center;
-				padding: 0.65rem 0; border-bottom: 1px solid #f1f5f9;
+				padding: 0.8rem 0; border-bottom: 1px solid var(--kqs-line);
 			}
+			.kqs-layby-item-row strong {
+				font-family: var(--kqs-font-display); font-weight: 700; letter-spacing: -0.02em;
+			}
+			.kqs-layby-item-row .small { color: var(--kqs-mute); }
+			.kqs-layby-action-row {
+				display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; margin-top: 1.15rem;
+			}
+			.kqs-layby-action-row-danger {
+				display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem;
+				margin-top: 1.75rem; padding-top: 1.15rem; border-top: 1px solid var(--kqs-line);
+			}
+			.kqs-layby-action-row-danger .kqs-layby-danger-label {
+				flex: 1 1 100%; font-size: 0.68rem; font-weight: 700; color: var(--kqs-mute);
+				text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.2rem;
+			}
+			.kqs-layby-hub-app .btn {
+				font-family: var(--kqs-font-ui); font-weight: 600; border-radius: 4px;
+				min-height: 2.65rem; padding: 0.55rem 1.1rem;
+				transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+			}
+			.kqs-layby-hub-app .btn:active { transform: translateY(1px); }
+			.kqs-layby-hub-app .btn-primary,
+			.kqs-layby-hub-app .kqs-layby-btn-primary {
+				background: var(--kqs-ink) !important; border-color: var(--kqs-ink) !important;
+				color: var(--kqs-surface) !important; font-weight: 700;
+				letter-spacing: 0.01em; box-shadow: 3px 3px 0 rgba(200, 16, 46, 0.35);
+			}
+			.kqs-layby-hub-app .btn-primary:hover,
+			.kqs-layby-hub-app .kqs-layby-btn-primary:hover {
+				background: var(--kqs-ink-soft) !important; border-color: var(--kqs-ink-soft) !important;
+				color: var(--kqs-surface) !important;
+			}
+			.kqs-layby-hub-app .btn-default,
+			.kqs-layby-hub-app .kqs-layby-btn-ghost {
+				background: transparent !important; border: 1.5px solid var(--kqs-ink) !important;
+				color: var(--kqs-ink) !important;
+			}
+			.kqs-layby-hub-app .btn-danger {
+				background: transparent !important; border: 1.5px solid var(--kqs-signal) !important;
+				color: var(--kqs-signal) !important;
+			}
+			.kqs-layby-hub-app .btn-outline-danger {
+				background: transparent !important; border: 1.5px solid var(--kqs-fog) !important;
+				color: var(--kqs-mute) !important;
+			}
+			.kqs-layby-hub-app .btn-sm { min-height: 2.4rem; }
+			.kqs-layby-action-row .btn-primary {
+				min-height: 3rem; padding: 0.7rem 1.4rem; font-size: 1rem;
+			}
+			.kqs-layby-step-panel {
+				padding: 0.25rem 0 0.5rem; background: transparent; border: 0; border-radius: 0;
+			}
+			.kqs-layby-step-actions {
+				display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 1.4rem;
+				padding-top: 1.1rem; border-top: 1px solid var(--kqs-line);
+			}
+			.kqs-layby-step-actions .btn-primary,
+			.kqs-layby-step-actions .kqs-layby-submit-pay {
+				min-width: 11rem; min-height: 3.1rem; font-size: 1.02rem;
+			}
+			.kqs-layby-back-link {
+				display: inline-flex; align-items: center; gap: 0.4rem;
+				font-family: var(--kqs-font-ui); font-size: 0.85rem; font-weight: 600;
+				color: var(--kqs-mute); margin-bottom: 1rem; cursor: pointer;
+				border: none; background: none; padding: 0.25rem 0;
+			}
+			.kqs-layby-back-link:hover { color: var(--kqs-ink); }
 			.kqs-layby-amend-line-pick {
-				border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.65rem;
-				margin-bottom: 0.5rem; cursor: pointer;
+				display: block; width: 100%; text-align: left;
+				border: 1.5px solid var(--kqs-line); border-radius: 4px; padding: 0.85rem 0.9rem;
+				margin-bottom: 0.55rem; cursor: pointer; background: var(--kqs-surface);
+				transition: border-color 0.15s ease, background 0.15s ease;
 			}
-			.kqs-layby-amend-line-pick:hover { border-color: #2563eb; }
-			.kqs-layby-amend-line-pick.is-selected { border-color: #2563eb; background: #eff6ff; }
+			.kqs-layby-amend-line-pick:hover { border-color: var(--kqs-ink); }
+			.kqs-layby-amend-line-pick.is-selected {
+				border-color: var(--kqs-ink); background: var(--kqs-ink); color: var(--kqs-surface);
+			}
 			.kqs-layby-replacement-card {
-				border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.7rem;
-				margin-bottom: 0.5rem; display: flex; justify-content: space-between; gap: 0.75rem;
-				align-items: center; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-				cursor: pointer;
+				border: 1.5px solid var(--kqs-line); border-radius: 4px; padding: 0.8rem 0.9rem;
+				margin-bottom: 0.55rem; display: flex; justify-content: space-between; gap: 0.75rem;
+				align-items: center; transition: border-color 0.15s, background 0.15s;
+				cursor: pointer; background: var(--kqs-surface);
 			}
-			.kqs-layby-replacement-card:hover { border-color: #94a3b8; }
+			.kqs-layby-replacement-card:hover { border-color: var(--kqs-ink); }
 			.kqs-layby-replacement-card.is-selected {
-				border: 2px solid #2563eb; background: #eff6ff;
-				box-shadow: 0 0 0 1px #2563eb;
+				border: 2px solid var(--kqs-ink); background: rgba(10, 10, 10, 0.04);
 			}
 			.kqs-layby-pick-btn {
-				flex-shrink: 0; border: 2px solid #2563eb; background: #fff; color: #2563eb;
-				font-weight: 700; font-size: 12px; padding: 0.4rem 0.85rem; border-radius: 8px;
-				cursor: pointer; min-width: 5.5rem;
+				flex-shrink: 0; border: 1.5px solid var(--kqs-ink); background: var(--kqs-surface);
+				color: var(--kqs-ink); font-weight: 700; font-size: 0.78rem;
+				padding: 0.45rem 0.9rem; border-radius: 4px; cursor: pointer; min-width: 5.5rem;
 			}
-			.kqs-layby-pick-btn:hover { background: #f8fbff; }
+			.kqs-layby-pick-btn:hover { background: rgba(10, 10, 10, 0.04); }
 			.kqs-layby-pick-btn.is-selected {
-				background: #2563eb; color: #fff; border-color: #1d4ed8;
+				background: var(--kqs-ink); color: var(--kqs-surface); border-color: var(--kqs-ink);
 			}
 			.kqs-layby-amend-toolbar {
-				display: none; margin-bottom: 0.85rem; padding: 0.75rem 0.85rem;
-				border-radius: 10px; border: 2px solid #2563eb; background: #eff6ff;
+				display: none; margin-bottom: 0.95rem; padding: 0.9rem 1rem;
+				border-radius: 4px; border: 2px solid var(--kqs-ink); background: rgba(10, 10, 10, 0.04);
 			}
 			.kqs-layby-amend-toolbar.is-visible { display: block; }
 			.kqs-layby-amend-toolbar .kqs-layby-amend-selected-name {
-				font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 0.15rem;
+				font-family: var(--kqs-font-display); font-size: 1.05rem; font-weight: 700;
+				color: var(--kqs-ink); margin-top: 0.15rem; letter-spacing: -0.02em;
 			}
 			.kqs-layby-amend-toolbar .kqs-layby-amend-selected-meta {
-				font-size: 11px; color: #475569; margin-top: 0.15rem;
+				font-size: 0.8rem; color: var(--kqs-mute); margin-top: 0.15rem;
 			}
 			.kqs-layby-amend-toolbar-actions {
-				display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.65rem;
+				display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.7rem;
 			}
 			.kqs-layby-amend-toolbar .kqs-layby-submit-amend {
-				background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 700;
+				background: var(--kqs-ink) !important; border-color: var(--kqs-ink) !important;
+				color: var(--kqs-surface) !important; font-weight: 700;
 			}
-			.kqs-layby-amend-toolbar .kqs-layby-submit-amend:hover {
-				background: #1d4ed8; border-color: #1d4ed8; color: #fff;
+			.kqs-layby-hub-app .kqs-layby-amend-search {
+				min-height: 2.85rem; border: 1.5px solid var(--kqs-ink) !important;
+				border-radius: 4px !important; font-size: 0.95rem !important;
+				box-shadow: 3px 3px 0 rgba(10, 10, 10, 0.06);
+			}
+			.kqs-layby-pay-header {
+				display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+				gap: 0.85rem 1.25rem; margin-bottom: 1.25rem; padding-bottom: 1.1rem;
+				border-bottom: 1px solid var(--kqs-line);
+			}
+			.kqs-layby-pay-eyebrow {
+				font-family: var(--kqs-font-display); font-size: 0.7rem; font-weight: 700;
+				letter-spacing: 0.16em; text-transform: uppercase; color: var(--kqs-mute);
+				margin: 0 0 0.35rem;
+			}
+			.kqs-layby-pay-customer {
+				font-size: 0.9rem; color: var(--kqs-mute); margin-top: 0.25rem;
+			}
+			.kqs-layby-pay-balance-block { text-align: right; }
+			.kqs-layby-pay-balance-block .label {
+				display: block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.12em; color: var(--kqs-mute); margin-bottom: 0.2rem;
+			}
+			.kqs-layby-money-hero {
+				font-family: var(--kqs-font-display); font-size: clamp(1.85rem, 3.2vw, 2.55rem);
+				font-weight: 800; letter-spacing: -0.05em; line-height: 1; color: var(--kqs-ink);
+			}
+			.kqs-layby-section-label {
+				font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.12em; color: var(--kqs-mute); margin: 0 0 0.55rem;
 			}
 			.kqs-layby-pay-grid {
-				display: grid; grid-template-columns: minmax(0, 1fr) minmax(11rem, 15rem);
-				gap: 1rem; align-items: start;
+				display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(12rem, 16rem);
+				gap: 1.25rem 1.5rem; align-items: start;
 			}
-			@media (max-width: 768px) { .kqs-layby-pay-grid { grid-template-columns: 1fr; } }
+			@media (max-width: 900px) {
+				.kqs-layby-list-panel { flex-basis: 17rem; width: 17rem; }
+			}
+			@media (max-width: 768px) {
+				.kqs-layby-hub-app { flex-direction: column; }
+				.kqs-layby-list-panel {
+					flex: 0 0 auto; width: 100%; max-height: 38vh;
+					border-right: 0; border-bottom: 1px solid var(--kqs-line);
+				}
+				.kqs-layby-pay-grid { grid-template-columns: 1fr; }
+				.kqs-layby-pay-balance-block { text-align: left; }
+			}
 			.kqs-layby-entry-panel { min-width: 0; }
-			.kqs-layby-mop-stack { display: flex; flex-direction: column; gap: 0.4rem; }
+			.kqs-layby-mop-stack {
+				display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+				gap: 0.55rem; margin-bottom: 1.15rem;
+			}
+			.kqs-layby-mop-tile {
+				position: relative; display: flex; flex-direction: column; align-items: flex-start;
+				gap: 0.2rem; min-height: 4.25rem; border: 2px solid var(--kqs-line);
+				border-radius: 4px; padding: 0.75rem 0.8rem 0.7rem 2.35rem;
+				background: var(--kqs-surface); cursor: pointer; text-align: left; width: 100%;
+				transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease,
+					transform 0.15s ease;
+			}
+			.kqs-layby-mop-tile:hover { border-color: var(--kqs-ink); }
+			.kqs-layby-mop-tile.is-active {
+				border-color: var(--kqs-ink); background: var(--kqs-ink); color: var(--kqs-surface);
+				animation: kqs-layby-select-pulse 0.28s ease;
+			}
+			.kqs-layby-mop-check {
+				position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%);
+				width: 1.05rem; height: 1.05rem; border: 1.5px solid currentColor;
+				border-radius: 2px; display: flex; align-items: center; justify-content: center;
+				font-size: 0.72rem; font-weight: 800; line-height: 1; opacity: 0.35;
+			}
+			.kqs-layby-mop-tile.is-active .kqs-layby-mop-check {
+				opacity: 1; background: var(--kqs-signal); border-color: var(--kqs-signal);
+				color: #fff;
+			}
+			.kqs-layby-mop-tile.is-active .kqs-layby-mop-check::after { content: "✓"; }
+			.kqs-layby-mop-name {
+				font-family: var(--kqs-font-display); font-weight: 700; font-size: 1rem;
+				letter-spacing: -0.02em;
+			}
+			.kqs-layby-mop-amt {
+				font-size: 0.82rem; font-weight: 600; min-height: 1.1em; opacity: 0.75;
+			}
+			.kqs-layby-money-field {
+				margin-bottom: 0.85rem; padding: 0.85rem 0.95rem;
+				border: 2px solid var(--kqs-ink); border-radius: 4px;
+				background: var(--kqs-surface);
+				box-shadow: 4px 4px 0 rgba(10, 10, 10, 0.08);
+				transition: box-shadow 0.2s ease, background 0.2s ease;
+			}
+			.kqs-layby-money-field.is-focused {
+				background: #fff;
+				animation: kqs-layby-money-glow 0.22s ease forwards;
+			}
+			.kqs-layby-money-field--secondary {
+				border-width: 1.5px; box-shadow: none; background: #fafafa;
+			}
+			.kqs-layby-money-field .form-group { margin-bottom: 0 !important; }
+			.kqs-layby-money-field .control-label,
+			.kqs-layby-money-field .help-box { display: none !important; }
+			.kqs-layby-money-field::before {
+				content: attr(data-label);
+				display: block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+				letter-spacing: 0.12em; color: var(--kqs-mute); margin-bottom: 0.35rem;
+			}
+			.kqs-layby-money-field .form-control,
+			.kqs-layby-money-field input {
+				border: 0 !important; background: transparent !important;
+				box-shadow: none !important; outline: none !important;
+				font-family: var(--kqs-font-display) !important;
+				font-size: clamp(1.75rem, 3.5vw, 2.35rem) !important;
+				font-weight: 800 !important; letter-spacing: -0.045em !important;
+				color: var(--kqs-ink) !important; padding: 0.15rem 0 !important;
+				min-height: 2.6rem !important; height: auto !important; line-height: 1.1 !important;
+			}
+			.kqs-layby-money-field--secondary .form-control,
+			.kqs-layby-money-field--secondary input {
+				font-size: clamp(1.25rem, 2.4vw, 1.65rem) !important;
+			}
+			.kqs-layby-pay-totals {
+				margin-top: 0.35rem; padding: 0.85rem 0.95rem;
+				border-radius: 4px; background: var(--kqs-ink); color: var(--kqs-surface);
+			}
+			.kqs-layby-pay-total-row {
+				display: flex; justify-content: space-between; align-items: baseline;
+				gap: 0.75rem; font-size: 0.9rem;
+			}
+			.kqs-layby-pay-total-row + .kqs-layby-pay-total-row {
+				margin-top: 0.55rem; padding-top: 0.55rem;
+				border-top: 1px solid rgba(255, 255, 255, 0.18);
+			}
+			.kqs-layby-pay-total-row span { color: rgba(255, 255, 255, 0.7); font-weight: 500; }
+			.kqs-layby-pay-total-row strong {
+				font-family: var(--kqs-font-display); font-size: 1.35rem; font-weight: 800;
+				letter-spacing: -0.03em; color: var(--kqs-surface);
+			}
+			.kqs-layby-hub-change-row strong { color: #f5c6cc; }
 			.kqs-layby-numpad-panel {
 				display: flex; flex-direction: column; min-width: 0;
 			}
 			.kqs-layby-numpad-panel .number-pad,
 			.kqs-layby-numpad-panel .kqs-layby-numpad {
 				position: static; flex: 1 1 auto; display: block;
-				width: 100%; min-height: 220px;
+				width: 100%; min-height: 240px;
 			}
 			.kqs-layby-numpad-panel .numpad-container {
 				display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-				gap: 0.5rem; width: 100%; box-sizing: border-box;
-				background-color: #f8fafc; border: 1px solid #e2e8f0;
-				border-radius: 10px; padding: 0.5rem;
+				gap: 0.55rem; width: 100%; box-sizing: border-box;
+				background: transparent; border: 0; border-radius: 0; padding: 0;
 			}
 			.kqs-layby-numpad-panel .numpad-btn {
 				display: flex; align-items: center; justify-content: center;
-				min-height: 2.75rem; padding: 0.45rem; border-radius: 8px;
-				border: 1px solid #e2e8f0; background: #fff;
-				box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-				font-size: 15px; font-weight: 700; color: #0f172a;
+				min-height: 3.35rem; padding: 0.55rem; border-radius: 4px;
+				border: 1.5px solid var(--kqs-line); background: var(--kqs-surface);
+				box-shadow: none; font-family: var(--kqs-font-display);
+				font-size: 1.2rem; font-weight: 700; color: var(--kqs-ink);
 				cursor: pointer; user-select: none; width: 100%;
+				transition: background 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
 			}
-			.kqs-layby-numpad-panel .numpad-btn:hover { background-color: #f1f5f9; }
+			.kqs-layby-numpad-panel .numpad-btn:hover {
+				background: rgba(10, 10, 10, 0.04); border-color: var(--kqs-ink);
+			}
+			.kqs-layby-numpad-panel .numpad-btn:active {
+				transform: translateY(1px); background: var(--kqs-ink); color: var(--kqs-surface);
+			}
 			.kqs-layby-numpad-hint {
-				font-size: 11px; color: #64748b; margin-top: 0.35rem; min-height: 1rem;
+				font-size: 0.78rem; color: var(--kqs-mute); margin-top: 0.55rem; min-height: 1rem;
 			}
-			.kqs-layby-mop-tile {
-				border: 2px solid #e2e8f0; border-radius: 10px; padding: 0.55rem 0.65rem;
-				background: #fff; cursor: pointer; text-align: left; width: 100%;
-			}
-			.kqs-layby-mop-tile.is-active { border-color: #2563eb; background: #eff6ff; }
-			.kqs-layby-refund-modes-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+			.kqs-layby-refund-modes-grid { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.55rem; }
 			.kqs-layby-refund-mode-btn {
-				border: 2px solid #e2e8f0; border-radius: 10px; padding: 0.5rem 0.85rem;
-				background: #fff; font-weight: 600; font-size: 12px; cursor: pointer;
+				border: 2px solid var(--kqs-line); border-radius: 4px; padding: 0.65rem 0.95rem;
+				background: var(--kqs-surface); font-weight: 600; font-size: 0.88rem; cursor: pointer;
+				min-height: 3rem; transition: border-color 0.15s, background 0.15s, color 0.15s;
 			}
-			.kqs-layby-refund-mode-btn.is-active { border-color: #2563eb; background: #eff6ff; }
+			.kqs-layby-refund-mode-btn.is-active {
+				border-color: var(--kqs-ink); background: var(--kqs-ink); color: var(--kqs-surface);
+			}
 			.kqs-layby-refund-mode-btn .kqs-refund-default-badge {
-				display: block; font-size: 10px; font-weight: 600; color: #2563eb; margin-top: 0.1rem;
+				display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+				text-transform: uppercase; opacity: 0.7; margin-top: 0.15rem;
 			}
 			.kqs-layby-cancel-credit-box {
-				margin-top: 0.65rem; padding: 0.75rem; border-radius: 10px;
-				border: 2px solid #bfdbfe; background: #f8fbff;
+				margin-top: 0.75rem; padding: 0.95rem 1rem; border-radius: 4px;
+				border: 1.5px solid var(--kqs-ink); background: rgba(10, 10, 10, 0.03);
 			}
 			.kqs-layby-cancel-credit-amount {
-				font-size: 1.25rem; font-weight: 800; color: #0f172a; margin-top: 0.15rem;
+				font-family: var(--kqs-font-display); font-size: 1.55rem; font-weight: 800;
+				color: var(--kqs-ink); margin-top: 0.2rem; letter-spacing: -0.03em;
 			}
 			.kqs-layby-forfeit-warning {
-				border-radius: 10px; padding: 0.75rem; background: #fef2f2;
-				border: 1px solid #fecaca; color: #991b1b; font-size: 12px; margin-bottom: 0.85rem;
+				border-radius: 4px; padding: 0.9rem 1rem; background: var(--kqs-signal-soft);
+				border: 1.5px solid rgba(200, 16, 46, 0.35); color: #7f0a1c;
+				font-size: 0.9rem; margin-bottom: 1rem; line-height: 1.45;
+			}
+			.kqs-layby-hub-app .kqs-layby-forfeit-note {
+				min-height: 7rem; border: 1.5px solid var(--kqs-ink) !important;
+				border-radius: 4px !important; font-size: 0.95rem !important;
+				padding: 0.75rem 0.85rem !important; background: var(--kqs-surface) !important;
+			}
+			.kqs-layby-done-panel {
+				min-height: min(50vh, 24rem); display: flex; flex-direction: column;
+				align-items: center; justify-content: center; text-align: center; padding: 2rem 1rem;
+			}
+			.kqs-layby-done-mark {
+				width: 3.25rem; height: 3.25rem; border-radius: 50%;
+				display: flex; align-items: center; justify-content: center;
+				background: var(--kqs-ink); color: var(--kqs-surface);
+				font-family: var(--kqs-font-display); font-size: 1.45rem; font-weight: 800;
+				margin-bottom: 1rem;
+			}
+			.kqs-layby-done-panel h2 {
+				font-family: var(--kqs-font-display); font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+				font-weight: 800; letter-spacing: -0.035em; margin: 0 0 1.25rem; max-width: 22rem;
+			}
+			.kqs-layby-loading {
+				padding: 2rem 0.5rem; color: var(--kqs-mute); font-size: 0.95rem;
 			}
 		`;
 		document.head.appendChild(style);
@@ -3259,8 +3530,9 @@ kqs_retail.pos_layby_hub = (function () {
 					<div class="kqs-layby-list-head">
 						<p class="kqs-layby-list-title">${__("Active laybys")}</p>
 						<div class="kqs-layby-search-row">
-							<input type="search" class="form-control" id="kqs-layby-hub-search"
-								placeholder="${__("Agreement or customer")}" />
+							<input type="search" class="kqs-layby-search-input" id="kqs-layby-hub-search"
+								placeholder="${__("Agreement # or customer")}"
+								autocomplete="off" enterkeyhint="search" />
 						</div>
 					</div>
 					<div class="kqs-layby-agreement-list" id="kqs-layby-hub-list"></div>
@@ -3338,7 +3610,11 @@ kqs_retail.pos_layby_hub = (function () {
 	function render_agreement_list() {
 		const $list = layout.find("#kqs-layby-hub-list");
 		if (!loaded_agreements.length) {
-			$list.html(`<p class="text-muted small px-2">${__("No active laybys found.")}</p>`);
+			$list.html(
+				`<p class="kqs-layby-list-empty">${__("No active laybys found.")}<br>${__(
+					"Try another agreement number or customer name."
+				)}</p>`
+			);
 			return;
 		}
 		const currency = get_currency();
@@ -3347,9 +3623,9 @@ kqs_retail.pos_layby_hub = (function () {
 				.map((row) => {
 					const selected = row.name === selected_agreement ? " is-selected" : "";
 					return `<button type="button" class="kqs-layby-agreement-card${selected}" data-name="${esc(row.name)}">
-						<div style="font-weight:700;font-size:13px;color:#0f172a">${esc(row.name)}</div>
-						<div style="font-size:11px;color:#64748b;margin-top:0.15rem">${esc(row.customer_name || "")}</div>
-						<div style="font-size:11px;color:#2563eb;margin-top:0.25rem;font-weight:600">${__("Balance")}: ${money(row.balance_amount, currency)}</div>
+						<div class="kqs-layby-card-id">${esc(row.name)}</div>
+						<div class="kqs-layby-card-customer">${esc(row.customer_name || "")}</div>
+						<div class="kqs-layby-card-balance">${money(row.balance_amount, currency)}</div>
 					</button>`;
 				})
 				.join("")
@@ -3406,9 +3682,12 @@ kqs_retail.pos_layby_hub = (function () {
 		const $main = layout.find("#kqs-layby-hub-main");
 		if (current_step === "search" || !agreement_detail) {
 			$main.html(`
-				<div class="kqs-layby-hero">
+				<div class="kqs-layby-hero kqs-layby-hero-empty kqs-layby-step-enter">
+					<p class="kqs-layby-brand-mark">KQS</p>
 					<h2>${__("Layby Lookup & Pay")}</h2>
-					<p>${__("Select a layby agreement on the left to record payments, change items, or cancel.")}</p>
+					<p>${__(
+						"Select a layby on the left to take a payment, change an item, or cancel."
+					)}</p>
 				</div>
 			`);
 			return;
@@ -3442,23 +3721,24 @@ kqs_retail.pos_layby_hub = (function () {
 			: "";
 
 		$main.html(`
-			<div class="kqs-layby-hero">
+			<div class="kqs-layby-hero kqs-layby-step-enter">
+				<p class="kqs-layby-brand-mark">${__("Layby")}</p>
 				<h2>${esc(d.name)}</h2>
-				<p><strong>${esc(d.customer_name || "")}</strong> · ${__("Due")} ${frappe.datetime.str_to_user(d.due_date) || "—"}</p>
+				<p class="kqs-layby-detail-meta"><strong>${esc(d.customer_name || "")}</strong> · ${__("Due")} ${frappe.datetime.str_to_user(d.due_date) || "—"}</p>
 				<div class="kqs-layby-stat-row">
+					<div class="kqs-layby-stat is-balance"><div class="label">${__("Balance due")}</div><div class="value">${money(d.balance_amount, currency)}</div></div>
 					<div class="kqs-layby-stat"><div class="label">${__("Paid")}</div><div class="value">${money(d.paid_amount, currency)}</div></div>
-					<div class="kqs-layby-stat"><div class="label">${__("Balance")}</div><div class="value">${money(d.balance_amount, currency)}</div></div>
 					<div class="kqs-layby-stat"><div class="label">${__("Total")}</div><div class="value">${money(d.total_amount, currency)}</div></div>
 				</div>
-				${items_html ? `<div class="mt-2">${items_html}</div>` : ""}
+				${items_html ? `<div class="kqs-layby-items-block">${items_html}</div>` : ""}
 			</div>
 			<div class="kqs-layby-action-row">
-				<button type="button" class="btn btn-primary btn-sm kqs-layby-action-btn" data-action="pay">${__("Record payment")}</button>
-				<button type="button" class="btn btn-default btn-sm kqs-layby-action-btn" data-action="amend">${__("Change item")}</button>
+				<button type="button" class="btn btn-primary kqs-layby-action-btn" data-action="pay">${__("Record payment")}</button>
+				<button type="button" class="btn btn-default kqs-layby-action-btn" data-action="amend">${__("Change item")}</button>
 			</div>
 			<div class="kqs-layby-action-row-danger">
 				<span class="kqs-layby-danger-label">${__("Irreversible — confirmation required")}</span>
-				<button type="button" class="btn btn-danger btn-sm kqs-layby-action-btn" data-action="cancel">${__("Cancel layby")}</button>
+				<button type="button" class="btn btn-danger kqs-layby-action-btn" data-action="cancel">${__("Cancel layby")}</button>
 				${forfeit_btn}
 			</div>
 		`);
@@ -3580,10 +3860,10 @@ kqs_retail.pos_layby_hub = (function () {
 		sync_layby_pay_controls();
 		payment_state.selected_mode = mode;
 		payment_state.numpad_target = "paying";
-		$main.find(".kqs-layby-mop-tile").removeClass("is-active");
+		$main.find(".kqs-layby-mop-tile").removeClass("is-active").attr("aria-pressed", "false");
 		$main.find(".kqs-layby-mop-tile").filter(function () {
 			return $(this).data("mode") === mode;
-		}).addClass("is-active");
+		}).addClass("is-active").attr("aria-pressed", "true");
 		$main.find(".kqs-layby-entry-paying").show();
 		payment_state.paying_control?.set_value(payment_state.amounts[mode] || 0);
 		if (is_physical_cash_mode(mode)) {
@@ -3604,29 +3884,50 @@ kqs_retail.pos_layby_hub = (function () {
 			.map((mode) => {
 				const key = sanitize_mode_key(mode);
 				const active = payment_state.selected_mode === mode ? " is-active" : "";
-				return `<button type="button" class="kqs-layby-mop-tile${active}" data-mode="${esc(mode)}">
-					<div style="font-weight:600;font-size:12px">${esc(mode)}</div>
-					<div class="small text-muted kqs-layby-mop-amt" data-key="${key}"></div>
+				return `<button type="button" class="kqs-layby-mop-tile${active}" data-mode="${esc(mode)}"
+					aria-pressed="${payment_state.selected_mode === mode ? "true" : "false"}">
+					<span class="kqs-layby-mop-check" aria-hidden="true"></span>
+					<span class="kqs-layby-mop-name">${esc(mode)}</span>
+					<span class="kqs-layby-mop-amt" data-key="${key}"></span>
 				</button>`;
 			})
 			.join("");
 
 		$main.html(`
 			<button type="button" class="kqs-layby-back-link kqs-layby-go-detail">← ${__("Back to layby")}</button>
-			<div class="kqs-layby-step-panel">
-				<h2 style="margin:0 0 0.5rem">${__("Record installment")}</h2>
-				<p class="small text-muted">${__("Balance due")}: <strong>${money(balance, currency)}</strong></p>
-				<div class="kqs-layby-pay-grid mt-3">
+			<div class="kqs-layby-step-panel kqs-layby-step-enter">
+				<div class="kqs-layby-pay-header">
+					<div>
+						<p class="kqs-layby-pay-eyebrow">${__("Record installment")}</p>
+						<h2 class="kqs-layby-step-title" style="margin:0">${esc(selected_agreement || "")}</h2>
+						<p class="kqs-layby-pay-customer">${esc(agreement_detail?.customer_name || "")}</p>
+					</div>
+					<div class="kqs-layby-pay-balance-block">
+						<span class="label">${__("Balance due")}</span>
+						<span class="kqs-layby-money-hero">${money(balance, currency)}</span>
+					</div>
+				</div>
+				<div class="kqs-layby-pay-grid">
 					<div class="kqs-layby-entry-panel">
-						<p class="small text-muted">${__("Payment methods")}</p>
+						<p class="kqs-layby-section-label">${__("Payment method")}</p>
 						<div class="kqs-layby-mop-stack">${modes_html}</div>
-						<div class="kqs-layby-entry-paying mt-2" id="kqs-layby-hub-paying-field"></div>
-						<div class="kqs-layby-entry-tendered mt-2" id="kqs-layby-hub-tendered-field"></div>
-						<div class="mt-2 small">${__("Paying today")}: <strong class="kqs-layby-hub-paying-total">0</strong></div>
-						<div class="small kqs-layby-hub-change-row">${__("Change")}: <strong class="kqs-layby-hub-change">0</strong></div>
+						<div class="kqs-layby-money-field kqs-layby-entry-paying" id="kqs-layby-hub-paying-field"
+							data-label="${__("Amount to pay")}"></div>
+						<div class="kqs-layby-money-field kqs-layby-money-field--secondary kqs-layby-entry-tendered"
+							id="kqs-layby-hub-tendered-field" data-label="${__("Customer gave")}"></div>
+						<div class="kqs-layby-pay-totals">
+							<div class="kqs-layby-pay-total-row">
+								<span>${__("Paying today")}</span>
+								<strong class="kqs-layby-hub-paying-total">0</strong>
+							</div>
+							<div class="kqs-layby-pay-total-row kqs-layby-hub-change-row">
+								<span>${__("Change")}</span>
+								<strong class="kqs-layby-hub-change">0</strong>
+							</div>
+						</div>
 					</div>
 					<div class="kqs-layby-numpad-panel">
-						<p class="small text-muted">${__("Keypad")}</p>
+						<p class="kqs-layby-section-label">${__("Keypad")}</p>
 						<div class="kqs-layby-numpad number-pad" id="kqs-layby-hub-numpad"></div>
 						<p class="kqs-layby-numpad-hint"></p>
 					</div>
@@ -3659,6 +3960,11 @@ kqs_retail.pos_layby_hub = (function () {
 		});
 		payment_state.paying_control.$input.on("focus", () => {
 			payment_state.numpad_target = "paying";
+			$main.find(".kqs-layby-entry-paying").addClass("is-focused");
+			$main.find(".kqs-layby-entry-tendered").removeClass("is-focused");
+		});
+		payment_state.paying_control.$input.on("blur", () => {
+			$main.find(".kqs-layby-entry-paying").removeClass("is-focused");
 		});
 
 		payment_state.tendered_control = frappe.ui.form.make_control({
@@ -3676,6 +3982,11 @@ kqs_retail.pos_layby_hub = (function () {
 		});
 		payment_state.tendered_control.$input.on("focus", () => {
 			payment_state.numpad_target = "tendered";
+			$main.find(".kqs-layby-entry-tendered").addClass("is-focused");
+			$main.find(".kqs-layby-entry-paying").removeClass("is-focused");
+		});
+		payment_state.tendered_control.$input.on("blur", () => {
+			$main.find(".kqs-layby-entry-tendered").removeClass("is-focused");
 		});
 
 		$main.find(".kqs-layby-entry-paying").hide();
@@ -3744,9 +4055,9 @@ kqs_retail.pos_layby_hub = (function () {
 				</div>`;
 
 		return `<div class="mt-3">
-				<div class="small font-weight-bold text-muted text-uppercase">${__("Refund method")}</div>
+				<p class="kqs-layby-section-label">${__("Refund method")}</p>
 				<div class="kqs-layby-refund-modes-grid">${account_btn}${payment_btns}</div>
-				<p class="small text-muted" style="margin:0.4rem 0 0">${__(
+				<p class="kqs-layby-step-sub" style="margin:0.45rem 0 0">${__(
 					"Account credit is the usual choice. Refund to Cash or mobile money only when required."
 				)}</p>
 				${amount_html}
@@ -3809,7 +4120,7 @@ kqs_retail.pos_layby_hub = (function () {
 		const preview = cancel_state?.preview;
 		const currency = get_currency();
 		if (!preview) {
-			$main.html(`<p class="text-muted">${__("Loading…")}</p>`);
+			$main.html(`<p class="kqs-layby-loading kqs-layby-step-enter">${__("Loading…")}</p>`);
 			return;
 		}
 		const store_btn = is_kqs_manager()
@@ -3819,17 +4130,18 @@ kqs_retail.pos_layby_hub = (function () {
 
 		$main.html(`
 			<button type="button" class="kqs-layby-back-link kqs-layby-go-detail">← ${__("Back to layby")}</button>
-			<div class="kqs-layby-step-panel">
-				<h2 style="margin:0 0 0.5rem;font-size:1.1rem">${__("Cancel layby")}</h2>
-				<p class="small text-muted">${esc(selected_agreement)} · ${esc(agreement_detail?.customer_name || "")}</p>
-				<div class="mb-3" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem">
+			<div class="kqs-layby-step-panel kqs-layby-step-enter">
+				<p class="kqs-layby-pay-eyebrow">${__("Cancel")}</p>
+				<h2 class="kqs-layby-step-title">${__("Cancel layby")}</h2>
+				<p class="kqs-layby-step-sub">${esc(selected_agreement)} · ${esc(agreement_detail?.customer_name || "")}</p>
+				<div class="mb-3" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.85rem">
 					<button type="button" class="btn btn-sm ${cancel_state.reason === "customer" ? "btn-primary" : "btn-default"} kqs-layby-cancel-reason" data-reason="customer">${__("Customer cancel")}</button>
 					${store_btn}
 				</div>
 				<div class="kqs-layby-stat-row">
 					<div class="kqs-layby-stat"><div class="label">${__("Paid")}</div><div class="value">${money(preview.paid_amount, currency)}</div></div>
 					<div class="kqs-layby-stat"><div class="label">${__("Refund %")}</div><div class="value">${preview.refund_percent}%</div></div>
-					<div class="kqs-layby-stat"><div class="label">${__("Refund")}</div><div class="value">${money(preview.refund_amount, currency)}</div></div>
+					<div class="kqs-layby-stat is-balance"><div class="label">${__("Refund")}</div><div class="value">${money(preview.refund_amount, currency)}</div></div>
 					<div class="kqs-layby-stat"><div class="label">${__("Retained")}</div><div class="value">${money(preview.forfeit_amount, currency)}</div></div>
 				</div>
 				${refund_html}
@@ -3945,10 +4257,11 @@ kqs_retail.pos_layby_hub = (function () {
 	function render_forfeit_step($main) {
 		$main.html(`
 			<button type="button" class="kqs-layby-back-link kqs-layby-go-detail">← ${__("Back to layby")}</button>
-			<div class="kqs-layby-step-panel">
-				<h2 style="margin:0 0 0.5rem;font-size:1.1rem">${__("Forfeit layby")}</h2>
+			<div class="kqs-layby-step-panel kqs-layby-step-enter">
+				<p class="kqs-layby-pay-eyebrow">${__("Manager")}</p>
+				<h2 class="kqs-layby-step-title">${__("Forfeit layby")}</h2>
 				<div class="kqs-layby-forfeit-warning">${__("Customer receives no refund. Stock is released for resale. This cannot be undone.")}</div>
-				<label class="small font-weight-bold">${__("Reason / note")} <span class="text-danger">*</span></label>
+				<label class="kqs-layby-section-label">${__("Reason / note")} <span class="text-danger">*</span></label>
 				<textarea class="form-control kqs-layby-forfeit-note" rows="4" placeholder="${__("e.g. Overdue after grace period")}"></textarea>
 				<div class="kqs-layby-step-actions">
 					<button type="button" class="btn btn-danger kqs-layby-submit-forfeit">${__("Confirm forfeit")}</button>
@@ -4028,10 +4341,11 @@ kqs_retail.pos_layby_hub = (function () {
 				.join("");
 			$main.html(`
 				<button type="button" class="kqs-layby-back-link kqs-layby-go-detail">← ${__("Back to layby")}</button>
-				<div class="kqs-layby-step-panel">
-					<h2 style="margin:0 0 0.5rem">${__("Which item to change?")}</h2>
-					<p class="small text-muted">${__("Tap the line you want to replace.")}</p>
-					${lines}
+				<div class="kqs-layby-step-panel kqs-layby-step-enter">
+					<p class="kqs-layby-pay-eyebrow">${__("Change item")}</p>
+					<h2 class="kqs-layby-step-title">${__("Which item to change?")}</h2>
+					<p class="kqs-layby-step-sub">${__("Tap the line you want to replace.")}</p>
+					<div style="margin-top:1rem">${lines}</div>
 				</div>
 			`);
 			$main.find(".kqs-layby-go-detail").on("click", () => show_step("detail"));
@@ -4061,14 +4375,15 @@ kqs_retail.pos_layby_hub = (function () {
 
 		$main.html(`
 			<button type="button" class="kqs-layby-back-link kqs-layby-amend-back-line">← ${__("Pick different line")}</button>
-			<div class="kqs-layby-step-panel">
-				<h2 style="margin:0 0 0.5rem">${__("Choose replacement")}</h2>
+			<div class="kqs-layby-step-panel kqs-layby-step-enter">
+				<p class="kqs-layby-pay-eyebrow">${__("Change item")}</p>
+				<h2 class="kqs-layby-step-title">${__("Choose replacement")}</h2>
 				${manager_chk}
 				<div class="kqs-layby-search-row mb-2">
 					<input type="search" class="form-control kqs-layby-amend-search" placeholder="${__("Search SKU or name")}" />
 				</div>
 				<div class="kqs-layby-amend-toolbar">
-					<div class="small font-weight-bold text-uppercase" style="color:#2563eb;letter-spacing:0.04em;font-size:10px">${__("Replacement selected")}</div>
+					<div class="kqs-layby-section-label">${__("Replacement selected")}</div>
 					<div class="kqs-layby-amend-selected-name"></div>
 					<div class="kqs-layby-amend-selected-meta"></div>
 					<div class="kqs-layby-amend-toolbar-actions">
@@ -4431,10 +4746,10 @@ kqs_retail.pos_layby_hub = (function () {
 
 	function render_done_step($main) {
 		$main.html(`
-			<div class="kqs-layby-step-panel text-center" style="padding:2rem 1rem">
-				<div style="font-size:2rem;margin-bottom:0.5rem">✓</div>
-				<h2 style="margin:0 0 0.5rem">${esc(done_message)}</h2>
-				<div class="kqs-layby-step-actions" style="justify-content:center;border:0">
+			<div class="kqs-layby-step-panel kqs-layby-done-panel kqs-layby-step-enter">
+				<div class="kqs-layby-done-mark" aria-hidden="true">✓</div>
+				<h2>${esc(done_message)}</h2>
+				<div class="kqs-layby-step-actions" style="justify-content:center;border:0;margin-top:0;padding-top:0">
 					<button type="button" class="btn btn-primary kqs-layby-done-another">${__("Another layby")}</button>
 					<button type="button" class="btn btn-default kqs-layby-hub-close">${__("Back to sale")}</button>
 				</div>
@@ -4599,6 +4914,38 @@ kqs_retail.pos_tools_menu = (function () {
 		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.47 8.47a.75.75 0 0 1 1.06 0L12 10.94l2.47-2.47a.75.75 0 1 1 1.06 1.06L13.06 12l2.47 2.47a.75.75 0 0 1-1.06 1.06L12 13.06l-2.47 2.47a.75.75 0 0 1-1.06-1.06L10.94 12 8.47 9.53a.75.75 0 0 1 0-1.06z"/><path d="M4.5 4.5A9 9 0 1 1 3 12a9 9 0 0 1 1.5-7.5z" opacity=".18"/></svg>`;
 	}
 
+	function icon_logout() {
+		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.5 3.75a.75.75 0 0 1 .75-.75h6A2.25 2.25 0 0 1 19.5 5.25v13.5A2.25 2.25 0 0 1 17.25 21h-6a.75.75 0 0 1 0-1.5h6a.75.75 0 0 0 .75-.75V5.25a.75.75 0 0 0-.75-.75h-6a.75.75 0 0 1-.75-.75z"/><path d="M3.22 11.47a.75.75 0 0 0 0 1.06l3.75 3.75a.75.75 0 1 0 1.06-1.06L5.81 12.75H14a.75.75 0 0 0 0-1.5H5.81l2.22-2.22a.75.75 0 0 0-1.06-1.06l-3.75 3.5z"/></svg>`;
+	}
+
+	function confirm_logout(on_confirm) {
+		frappe.confirm(
+			__(
+				"Log out of this account?<br><br><b>Your till stays open</b> until you use Close POS. You can sign back in later and resume the same session."
+			),
+			() => on_confirm?.(),
+			() => {}
+		);
+	}
+
+	function do_logout() {
+		// Call logout API directly so we only show our Menu confirmation (not a second dialog).
+		frappe.call({
+			method: "logout",
+			callback(r) {
+				if (r.exc) {
+					return;
+				}
+				try {
+					frappe.app?.clear_session?.();
+				} catch (e) {
+					/* ignore */
+				}
+				window.location.href = "/login";
+			},
+		});
+	}
+
 	function get_tiles(pos) {
 		const tiles = [];
 
@@ -4670,6 +5017,17 @@ kqs_retail.pos_tools_menu = (function () {
 					if (typeof pos.close_pos === "function") {
 						pos.close_pos();
 					}
+				},
+			},
+			{
+				id: "logout",
+				title: __("Log Out"),
+				desc: __("Sign out of this login. Till stays open until Close POS."),
+				gradient: "linear-gradient(145deg, #FF6B6B 0%, #C62828 100%)",
+				icon: icon_logout(),
+				confirm_before: confirm_logout,
+				action() {
+					do_logout();
 				},
 			}
 		);
@@ -4942,8 +5300,16 @@ kqs_retail.pos_tools_menu = (function () {
 			const tile = tiles.find((row) => row.id === id);
 			if (!tile) return;
 			const target_pos = active_pos;
-			close({ restore_pos: false });
-			frappe.after_ajax(() => tile.action(target_pos));
+			const run = () => {
+				close({ restore_pos: false });
+				frappe.after_ajax(() => tile.action(target_pos));
+			};
+			// Confirm first while Menu is still visible — cancel must leave the till usable.
+			if (typeof tile.confirm_before === "function") {
+				tile.confirm_before(run);
+				return;
+			}
+			run();
 		});
 	}
 
@@ -5274,7 +5640,14 @@ frappe.provide("kqs_retail.point_of_sale");
 		});
 
 		const buttons = [];
-		if (customer_fmt) {
+		if (is_complete && complete_fmt && sales_invoice) {
+			buttons.push(
+				`<button type="button" class="btn btn-primary btn-sm kqs-layby-print-complete">${__(
+					"Print Completion Receipt"
+				)}</button>`
+			);
+		}
+		if (customer_fmt && !is_complete) {
 			buttons.push(
 				`<button type="button" class="btn btn-primary btn-sm kqs-layby-print-customer">${__(
 					"Print Customer Receipt"
@@ -5285,6 +5658,12 @@ frappe.provide("kqs_retail.point_of_sale");
 					"Email Customer Receipt"
 				)}</button>`
 			);
+		} else if (customer_fmt && is_complete) {
+			buttons.push(
+				`<button type="button" class="btn btn-default btn-sm kqs-layby-print-customer">${__(
+					"Print Layby Summary"
+				)}</button>`
+			);
 		}
 		if (is_new_layby && reserve_fmt) {
 			buttons.push(
@@ -5293,19 +5672,18 @@ frappe.provide("kqs_retail.point_of_sale");
 				)}</button>`
 			);
 		}
-		if (is_complete && complete_fmt && sales_invoice) {
-			buttons.push(
-				`<button type="button" class="btn btn-primary btn-sm kqs-layby-print-complete">${__(
-					"Print Completion Receipt"
-				)}</button>`
-			);
-		}
 
 		const $ui = d.fields_dict.receipt_ui.$wrapper;
+		let blurb = __("Layby saved successfully.");
+		if (!is_new_layby && is_complete) {
+			blurb = __("Layby completed. Print the sale receipt below.");
+		} else if (!is_new_layby) {
+			blurb = __("Payment recorded. Print the customer receipt if needed.");
+		}
 		$ui.html(`
-			<p>${__("Layby saved successfully.")}</p>
+			<p>${blurb}</p>
 			<p class="text-muted">${__(
-				"Print or email receipts below â€” same as after a normal POS sale."
+				"Reserve slip prints only when a layby is first created."
 			)}</p>
 			<div class="kqs-layby-receipt-actions" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem;">
 				${buttons.join("") || `<p class="text-muted">${__("No receipt formats linked in KQS Retail Settings.")}</p>`}
@@ -5329,14 +5707,20 @@ frappe.provide("kqs_retail.point_of_sale");
 		d.show();
 
 		if (should_auto_print_layby_receipts()) {
-			if (customer_fmt) {
-				open_kqs_print_view("Layby Agreement", agreement_name, customer_fmt);
-			}
-			if (is_new_layby && reserve_fmt) {
-				open_kqs_print_view("Layby Agreement", agreement_name, reserve_fmt);
-			}
-			if (is_complete && complete_fmt && sales_invoice) {
+			if (is_new_layby) {
+				/* New layby: customer copy + one store reserve slip. */
+				if (customer_fmt) {
+					open_kqs_print_view("Layby Agreement", agreement_name, customer_fmt);
+				}
+				if (reserve_fmt) {
+					open_kqs_print_view("Layby Agreement", agreement_name, reserve_fmt);
+				}
+			} else if (is_complete && complete_fmt && sales_invoice) {
+				/* Final payment: completion / sale receipt only — no reserve, no second layby slip. */
 				open_kqs_print_view("Sales Invoice", sales_invoice, complete_fmt);
+			} else if (customer_fmt) {
+				/* Installment: customer receipt with updated balance only. */
+				open_kqs_print_view("Layby Agreement", agreement_name, customer_fmt);
 			}
 		}
 	}
@@ -8815,7 +9199,16 @@ frappe.provide("kqs_retail.point_of_sale");
 				3
 			);
 			me.prepare_app_defaults(data.opening);
-			frappe.after_ajax(() => kqs_init_offline_cache(me));
+			// Don't wait for the whole AJAX queue — start offline cache after paint.
+			setTimeout(() => kqs_init_offline_cache(me), 0);
+			// Clear any leftover Desk freeze so the till isn't stuck greyed out.
+			setTimeout(() => {
+				try {
+					frappe.dom.unfreeze();
+				} catch (e) {
+					/* ignore */
+				}
+			}, 400);
 			return true;
 		}
 		if (data.action === "close" && data.opening?.name) {

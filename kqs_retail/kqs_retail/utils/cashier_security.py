@@ -27,6 +27,7 @@ FORBIDDEN_EXTRA_CASHIER_ROLES = frozenset(
 	{
 		"Sales User",
 		"Sales Manager",
+		"Stock User",
 		"Stock Manager",
 		"Accounts User",
 		"Accounts Manager",

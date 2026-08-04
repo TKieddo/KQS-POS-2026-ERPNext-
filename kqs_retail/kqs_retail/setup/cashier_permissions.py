@@ -85,6 +85,10 @@ _CASHIER_PERMS = [
 	("Loyalty Program", {"read": 1}),
 	("Loyalty Point Entry", {"read": 1, "write": 1, "create": 1}),
 	("Loyalty Program Collection", {"read": 1}),
+	# Receipt print (QZ / browser printview loads Print Format HTML).
+	("Print Format", {"read": 1}),
+	("Letter Head", {"read": 1}),
+	("Print Settings", {"read": 1}),
 ]
 
 

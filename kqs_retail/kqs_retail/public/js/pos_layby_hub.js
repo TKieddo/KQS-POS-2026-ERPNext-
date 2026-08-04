@@ -1,6 +1,9 @@
 /* Copyright (c) 2026, KQS — Full-screen Layby Lookup & Ops inside Point of Sale
- * Bundled into point_of_sale.js (Frappe page_js accepts one file per page).
- * After editing this file, run: python scripts/_merge_layby_hub.py
+ *
+ * CANONICAL IMPLEMENTATION: kqs_retail/public/js/point_of_sale.js
+ * (`kqs_retail.pos_layby_hub`). Prefer editing the hub block there.
+ * This file is a historical extract; the merge script is not present.
+ * Do not treat this copy as live page_js — Frappe loads point_of_sale.js only.
  */
 const KQS_LAYBY_HUB_VERSION = 1;
 

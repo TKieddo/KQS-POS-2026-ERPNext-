@@ -86,7 +86,9 @@ On every `bench migrate`, `kqs_retail.setup.cashier_permissions.ensure` runs and
 - Sales / POS invoices in lists are filtered to their POS Profile (when User Permission is set)
 - App launcher: cashiers see **Point of Sale** only, not **KQS Retail**
 
-**Client-side backup:** `cashier_desk_guard.js` redirects any non-POS route back to the till.
+**Client-side backup:** `cashier_desk_guard.js` redirects any non-POS route back to the till. On **Point of Sale** itself, the Desk left sidebar is hidden for **all roles** (full-width till) — not only cashiers. Cashiers also keep the sidebar hidden on **POS Closing Entry** (cash-up).
+
+> **Note:** User → Settings → List Settings → **Sidebar** only controls the *list-view* filter sidebar. It does **not** hide the Desk left workspace nav (Stock / Selling). KQS hides that via `hide_sidebar` + the cashier desk guard — not that checkbox.
 
 ---
 
@@ -161,7 +163,11 @@ Allowed cashier routes: `/app/point-of-sale` and `/app/pos-closing-entry/...` on
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Cashier sees KQS Retail app / Selling sidebar | Extra role (`Sales User`, etc.) | User → Roles → remove extras; run `cashier_permissions.ensure` |
+| Cashier sees KQS Retail app / Selling sidebar | Extra role (`Sales User`, `Stock User`, etc.) | User → Roles → remove extras; run `cashier_permissions.ensure` |
+| Cashier sees Stock sidebar on POS | Stale JS / race before `hide_sidebar` applied | Hard refresh (`Ctrl+Shift+R`); ensure latest `cashier_desk_guard.js` + `point_of_sale.js` deployed |
+| Cashier can open Item / Warehouse forms | Same as above, or not `KQS Cashier`-only | Check roles; hard refresh — forbidden `/app/...` URLs HTTP-302 to POS (no modal) |
+| Unticked User → List Settings → Sidebar but Desk nav still shows | That checkbox is list-view only, not Desk workspace sidebar | Expected — KQS guard handles Desk sidebar, not that setting |
+| Print popup shows **417** / server error | Missing **Print Format** read for `KQS Cashier` | Run `cashier_permissions.ensure`; hard refresh |
 | Cashier can open Stock / reports | Same as above, or logged in as manager | Check roles; hard-refresh browser |
 | POS checkout permission error | Missing DocPerm on a DocType | Run `cashier_permissions.ensure`; check Role Permission Manager |
 | Cashier sees another store’s invoices in Desk | Missing User Permission on POS Profile | User → User Permissions → POS Profile |

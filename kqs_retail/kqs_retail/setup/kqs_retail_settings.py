@@ -10,6 +10,7 @@ _PRINT_FORMAT_FIELDS = (
 	"layby_reserve_print_format",
 	"layby_complete_print_format",
 	"ar_payment_print_format",
+	"cashup_print_format",
 )
 
 

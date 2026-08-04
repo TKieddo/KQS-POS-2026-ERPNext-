@@ -53,6 +53,14 @@ app_include_js = [
 	"public/js/offline/sw_register.js",
 ]
 
+# Safe Jinja helpers for print formats (frappe.get_attr is blocked in print sandbox).
+jinja = {
+	"methods": [
+		"kqs_retail.utils.items.format_receipt_qty",
+		"kqs_retail.utils.items.format_receipt_item_name",
+	],
+}
+
 override_whitelisted_methods = {
 	"erpnext.selling.page.point_of_sale.point_of_sale.get_items": "kqs_retail.api.pos.get_items",
 	"erpnext.selling.page.point_of_sale.point_of_sale.check_opening_entry": (
@@ -63,7 +71,10 @@ override_whitelisted_methods = {
 doctype_js = {
 	"Item": "public/js/item.js",
 	"Customer": "public/js/customer.js",
-	"POS Closing Entry": "public/js/pos_closing_entry.js",
+	"POS Closing Entry": [
+		"public/js/kqs_silent_print.js",
+		"public/js/pos_closing_entry.js",
+	],
 	"POS Opening Entry": "public/js/pos_opening_entry.js",
 }
 
