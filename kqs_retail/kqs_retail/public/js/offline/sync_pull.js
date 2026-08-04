@@ -4,8 +4,8 @@
 		const r = await frappe.call({
 			method: "kqs_retail.offline.api.pull_offline_bundle",
 			args: { pos_profile, warehouse: warehouse || "" },
-			freeze: true,
-			freeze_message: __("Caching catalog for offline…"),
+			// Background cache — never block the till UI while cashiers start selling.
+			freeze: false,
 		});
 		const bundle = r.message || {};
 		await window.kqs_offline_db.put_catalog(bundle.catalog || []);
@@ -25,15 +25,23 @@
 	}
 
 	async function acquire_lease(pos_profile, warehouse, opening_entry) {
-		const r = await frappe.call({
-			method: "kqs_retail.offline.api.acquire_offline_lease",
-			args: {
-				pos_profile,
-				warehouse: warehouse || "",
-				opening_entry: opening_entry || "",
-			},
-		});
-		return r.message;
+		// Non-blocking: records last till for ops; never shows a Desk Message.
+		try {
+			const r = await frappe.call({
+				method: "kqs_retail.offline.api.acquire_offline_lease",
+				args: {
+					pos_profile,
+					warehouse: warehouse || "",
+					opening_entry: opening_entry || "",
+				},
+				// Avoid freeze overlay on every POS open.
+				freeze: false,
+			});
+			return r.message;
+		} catch (e) {
+			console.warn("KQS offline lease (ignored):", e);
+			return null;
+		}
 	}
 
 	async function release_lease(pos_profile, warehouse) {

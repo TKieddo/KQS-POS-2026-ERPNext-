@@ -1,12 +1,21 @@
-/* Copyright (c) 2026, KQS — Online/offline detection for POS. */
+/* Copyright (c) 2026, KQS — Online/offline detection for POS (store Wi‑Fi friendly). */
 (() => {
-	let online = navigator.onLine !== false;
+	// Assume online until proven otherwise — never flip offline on one blip.
+	let online = true;
 	let listeners = [];
 	let ping_timer = null;
+	let fail_streak = 0;
+	let ping_in_flight = false;
 
-	function set_online(next) {
-		if (online === next) return;
-		online = next;
+	// Store Wi‑Fi / cellular often drops briefly; require sustained failure.
+	const FAIL_BEFORE_OFFLINE = 3;
+	const PING_TIMEOUT_MS = 12000;
+	const DEFAULT_POLL_MS = 45000;
+	const OFFLINE_EVENT_DEBOUNCE_MS = 8000;
+
+	let offline_event_timer = null;
+
+	function notify() {
 		listeners.forEach((fn) => {
 			try {
 				fn(online);
@@ -22,26 +31,96 @@
 		}
 	}
 
-	async function ping() {
-		if (!navigator.onLine) {
-			set_online(false);
-			return false;
+	function set_online(next) {
+		if (online === next) return;
+		online = next;
+		if (online) {
+			fail_streak = 0;
 		}
+		notify();
+	}
+
+	function mark_ping_ok() {
+		fail_streak = 0;
+		set_online(true);
+	}
+
+	function mark_ping_fail() {
+		fail_streak += 1;
+		if (fail_streak >= FAIL_BEFORE_OFFLINE) {
+			set_online(false);
+		}
+		// While streak < threshold, stay "online" so POS keeps using the server.
+	}
+
+	function call_with_timeout(opts, timeout_ms) {
+		return new Promise((resolve, reject) => {
+			let settled = false;
+			const timer = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				reject(new Error("ping timeout"));
+			}, timeout_ms);
+			frappe
+				.call(opts)
+				.then((r) => {
+					if (settled) return;
+					settled = true;
+					clearTimeout(timer);
+					resolve(r);
+				})
+				.catch((e) => {
+					if (settled) return;
+					settled = true;
+					clearTimeout(timer);
+					reject(e);
+				});
+		});
+	}
+
+	async function ping() {
+		if (ping_in_flight) {
+			return online;
+		}
+		ping_in_flight = true;
 		try {
-			await frappe.call({
-				method: "kqs_retail.offline.api.ping_offline",
-				freeze: false,
-			});
-			set_online(true);
+			// navigator.onLine is unreliable on Windows/tablets — do not trust alone.
+			await call_with_timeout(
+				{
+					method: "kqs_retail.offline.api.ping_offline",
+					freeze: false,
+				},
+				PING_TIMEOUT_MS
+			);
+			mark_ping_ok();
 			return true;
 		} catch (e) {
-			set_online(false);
-			return false;
+			mark_ping_fail();
+			return online;
+		} finally {
+			ping_in_flight = false;
 		}
 	}
 
-	window.addEventListener("online", () => ping());
-	window.addEventListener("offline", () => set_online(false));
+	window.addEventListener("online", () => {
+		if (offline_event_timer) {
+			clearTimeout(offline_event_timer);
+			offline_event_timer = null;
+		}
+		// Confirm with a ping; don't wait for the poll interval.
+		ping();
+	});
+
+	window.addEventListener("offline", () => {
+		// Browser fires this on tiny drops — debounce, then confirm with ping.
+		if (offline_event_timer) {
+			clearTimeout(offline_event_timer);
+		}
+		offline_event_timer = setTimeout(() => {
+			offline_event_timer = null;
+			ping();
+		}, OFFLINE_EVENT_DEBOUNCE_MS);
+	});
 
 	window.kqs_offline_network = {
 		is_online() {
@@ -51,9 +130,15 @@
 			listeners.push(fn);
 		},
 		ping,
-		start_polling(ms = 20000) {
+		start_polling(ms = DEFAULT_POLL_MS, opts = {}) {
 			if (ping_timer) clearInterval(ping_timer);
-			ping();
+			const immediate = opts.immediate !== false;
+			if (immediate) {
+				ping();
+			} else {
+				// Let POS paint / get_items finish before first connectivity check.
+				setTimeout(ping, 8000);
+			}
 			ping_timer = setInterval(ping, ms);
 		},
 	};

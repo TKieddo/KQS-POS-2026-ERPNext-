@@ -1,5 +1,10 @@
 # Copyright (c) 2026, KQS
-"""Single-till offline lease per warehouse (short outages)."""
+"""Offline lease telemetry per warehouse (non-blocking).
+
+One row per warehouse (autoname = warehouse). Always update-in-place —
+never insert a second doc (that caused Duplicate Name on 2nd till).
+Never blocks cache pull or sync.
+"""
 
 from __future__ import annotations
 
@@ -19,13 +24,20 @@ def _expire_stale_leases(warehouse: str | None = None) -> None:
 		frappe.db.set_value("Warehouse Offline Lease", name, "is_active", 0)
 
 
+def _lease_name_for_warehouse(warehouse: str) -> str | None:
+	"""Doc name equals warehouse (autoname). Inactive rows still occupy the name."""
+	if frappe.db.exists("Warehouse Offline Lease", warehouse):
+		return warehouse
+	return frappe.db.get_value("Warehouse Offline Lease", {"warehouse": warehouse}, "name")
+
+
 def acquire_lease(
 	warehouse: str,
 	pos_profile: str,
 	opening_entry: str | None = None,
 	user: str | None = None,
 ) -> dict:
-	"""Grant exclusive offline lease for this warehouse to the current till."""
+	"""Record last till that opened offline cache (never blocks, never Duplicate Name)."""
 	if not warehouse:
 		frappe.throw(_("Warehouse is required."))
 	if not pos_profile:
@@ -34,24 +46,12 @@ def acquire_lease(
 	user = user or frappe.session.user
 	_expire_stale_leases(warehouse)
 
-	existing = frappe.db.get_value(
-		"Warehouse Offline Lease",
-		{"warehouse": warehouse, "is_active": 1},
-		["name", "user", "pos_profile", "expires_at"],
-		as_dict=True,
-	)
-	if existing and existing.user != user:
-		frappe.throw(
-			_(
-				"Warehouse {0} offline lease is held by {1} until {2}. "
-				"Only one till may work offline per store."
-			).format(warehouse, existing.user, existing.expires_at)
-		)
-
 	now = now_datetime()
 	expires = add_to_date(now, hours=LEASE_HOURS)
-	if existing:
-		doc = frappe.get_doc("Warehouse Offline Lease", existing.name)
+	existing_name = _lease_name_for_warehouse(warehouse)
+
+	if existing_name:
+		doc = frappe.get_doc("Warehouse Offline Lease", existing_name)
 		doc.pos_profile = pos_profile
 		doc.user = user
 		doc.opening_entry = opening_entry or doc.opening_entry
@@ -86,18 +86,13 @@ def acquire_lease(
 
 
 def release_lease(warehouse: str, user: str | None = None) -> dict:
-	user = user or frappe.session.user
 	_expire_stale_leases(warehouse)
-	name = frappe.db.get_value(
-		"Warehouse Offline Lease",
-		{"warehouse": warehouse, "is_active": 1},
-		"name",
-	)
+	name = _lease_name_for_warehouse(warehouse)
 	if not name:
 		return {"released": False, "warehouse": warehouse}
 	doc = frappe.get_doc("Warehouse Offline Lease", name)
-	if doc.user != user and "System Manager" not in frappe.get_roles():
-		frappe.throw(_("Only the lease holder or a System Manager can release this lease."))
+	if not doc.is_active:
+		return {"released": False, "warehouse": warehouse}
 	doc.is_active = 0
 	doc.save(ignore_permissions=True)
 	return {"released": True, "warehouse": warehouse}
@@ -125,12 +120,5 @@ def get_active_lease(warehouse: str) -> dict | None:
 
 
 def assert_lease_allows_push(warehouse: str, user: str | None = None) -> None:
-	"""Push is allowed for the lease holder, or when no active lease (online sync)."""
-	user = user or frappe.session.user
-	lease = get_active_lease(warehouse) if warehouse else None
-	if lease and lease["user"] != user:
-		frappe.throw(
-			_("Cannot sync offline events: warehouse {0} lease belongs to {1}.").format(
-				warehouse, lease["user"]
-			)
-		)
+	"""No longer exclusive — any signed-in till may sync offline events for the store."""
+	return

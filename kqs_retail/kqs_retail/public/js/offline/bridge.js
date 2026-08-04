@@ -104,19 +104,24 @@
 		return event;
 	}
 
-	async function init_for_pos(ctx) {
-		const pos_profile = ctx.pos_profile;
-		const warehouse = ctx.warehouse;
-		const opening_entry = ctx.opening_entry || "";
-		if (!pos_profile) return;
-
-		window.kqs_offline_network.start_polling(20000);
+	async function refresh_offline_cache(pos_profile, warehouse) {
+		if (!pos_profile || !window.kqs_offline_network?.is_online()) {
+			await refresh_banner();
+			return;
+		}
 		try {
-			if (window.kqs_offline_network.is_online()) {
-				await window.kqs_offline_pull.acquire_lease(pos_profile, warehouse, opening_entry);
-				await window.kqs_offline_pull.pull_bundle(pos_profile, warehouse);
-				await window.kqs_offline_outbox.drain_outbox();
+			const meta = (await window.kqs_offline_db?.get_meta?.("session"))?.value || {};
+			const pulled_at = meta.pulled_at ? new Date(meta.pulled_at).getTime() : 0;
+			const age_ms = pulled_at ? Date.now() - pulled_at : Number.POSITIVE_INFINITY;
+			const same_wh = !warehouse || meta.warehouse === warehouse;
+			// Fresh cache (< 30 min): only drain outbox, skip heavy catalog pull.
+			if (same_wh && age_ms >= 0 && age_ms < 30 * 60 * 1000) {
+				await window.kqs_offline_outbox?.drain_outbox?.();
+				await refresh_banner();
+				return;
 			}
+			await window.kqs_offline_pull.pull_bundle(pos_profile, warehouse);
+			await window.kqs_offline_outbox?.drain_outbox?.();
 		} catch (e) {
 			console.warn("KQS offline init:", e);
 			frappe.show_alert({
@@ -127,6 +132,35 @@
 			});
 		}
 		await refresh_banner();
+	}
+
+	function schedule_idle(fn, delay_ms = 2000) {
+		const run = () => {
+			try {
+				fn();
+			} catch (e) {
+				console.warn("KQS offline schedule:", e);
+			}
+		};
+		if (typeof requestIdleCallback === "function") {
+			setTimeout(() => requestIdleCallback(run, { timeout: 5000 }), delay_ms);
+		} else {
+			setTimeout(run, delay_ms);
+		}
+	}
+
+	async function init_for_pos(ctx) {
+		const pos_profile = ctx.pos_profile;
+		const warehouse = ctx.warehouse;
+		if (!pos_profile) return;
+
+		// Poll later so opening ping doesn't compete with get_items.
+		if (window.kqs_offline_network?.start_polling) {
+			window.kqs_offline_network.start_polling(45000, { immediate: false });
+		}
+		// Banner only — keep till interactive while cache refreshes in background.
+		refresh_banner();
+		schedule_idle(() => refresh_offline_cache(pos_profile, warehouse), 2500);
 	}
 
 	async function assert_can_close() {

@@ -34,7 +34,7 @@ def _warehouse_for_profile(pos_profile: str) -> str:
 
 
 def _catalog_for_warehouse(warehouse: str, price_list: str | None = None) -> list[dict]:
-	from kqs_retail.kqs_layby.stock_reservation import get_sellable_qty
+	from kqs_retail.kqs_layby.stock_reservation import get_reserved_qty_map
 
 	bins = frappe.get_all(
 		"Bin",
@@ -68,12 +68,14 @@ def _catalog_for_warehouse(warehouse: str, price_list: str | None = None) -> lis
 		):
 			rates[row.item_code] = flt(row.price_list_rate)
 
+	reserved = get_reserved_qty_map(warehouse)
 	out = []
 	for b in bins:
 		item = items.get(b.item_code)
 		if not item:
 			continue
-		sellable = flt(get_sellable_qty(b.item_code, warehouse))
+		actual = flt(b.actual_qty)
+		sellable = actual - flt(reserved.get(b.item_code, 0))
 		out.append(
 			{
 				"item_code": b.item_code,
@@ -83,7 +85,7 @@ def _catalog_for_warehouse(warehouse: str, price_list: str | None = None) -> lis
 				"stock_uom": item.stock_uom,
 				"warehouse": warehouse,
 				"qty": sellable,
-				"actual_qty": flt(b.actual_qty),
+				"actual_qty": actual,
 				"rate": rates.get(b.item_code, flt(item.standard_rate)),
 			}
 		)
