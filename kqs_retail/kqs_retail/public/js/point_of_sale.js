@@ -8931,6 +8931,21 @@ frappe.provide("kqs_retail.point_of_sale");
 		Controller.prototype._kqs_opening_flow_patched = true;
 	}
 
+	function force_pos_hide_desk_sidebar(wrapper) {
+		// ERPNext sets hide_sidebar:true in make_app_page, but container.change_to()
+		// calls toggle_sidebar() immediately after on_page_load returns. When we defer
+		// make_app_page behind frappe.require, that toggle runs too early and the Desk
+		// Stock sidebar stays visible until something else hides it.
+		if (wrapper?.page) {
+			wrapper.page.hide_sidebar = true;
+		}
+		try {
+			frappe.app?.sidebar?.toggle(true);
+		} catch (e) {
+			/* sidebar may not exist yet on first paint */
+		}
+	}
+
 	function wrap_point_of_sale_page_load() {
 		const page = frappe.pages?.["point-of-sale"];
 		if (!page?.on_page_load || page._kqs_opening_page_wrapped) {
@@ -8939,21 +8954,25 @@ frappe.provide("kqs_retail.point_of_sale");
 		page._kqs_opening_page_wrapped = true;
 		const orig = page.on_page_load;
 		page.on_page_load = function (wrapper) {
+			force_pos_hide_desk_sidebar(wrapper);
 			// Patch Controller BEFORE ERPNext constructs it (constructor calls check_opening_entry).
 			frappe.require("point-of-sale.bundle.js", () => {
 				patch_pos_opening_session_flow();
 				apply_all_kqs_pos_patches();
 				orig.call(this, wrapper);
+				force_pos_hide_desk_sidebar(wrapper);
 			});
 		};
 		const orig_refresh = page.refresh;
 		if (orig_refresh && !page._kqs_opening_refresh_wrapped) {
 			page._kqs_opening_refresh_wrapped = true;
 			page.refresh = function (wrapper) {
+				force_pos_hide_desk_sidebar(wrapper);
 				frappe.require("point-of-sale.bundle.js", () => {
 					patch_pos_opening_session_flow();
 					apply_all_kqs_pos_patches();
 					orig_refresh.call(this, wrapper);
+					force_pos_hide_desk_sidebar(wrapper);
 				});
 			};
 		}

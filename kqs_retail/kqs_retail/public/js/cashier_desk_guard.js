@@ -1,7 +1,8 @@
 /* Copyright (c) 2026, KQS — Keep KQS Cashier on Point of Sale, not full Desk. */
 (function () {
 	const POS_PAGE_KEY = "_page:point-of-sale";
-	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 51";
+	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 54";
+	const POS_HOME = "/app/point-of-sale";
 
 	function bust_stale_pos_page_cache() {
 		try {
@@ -259,6 +260,18 @@
 		return true;
 	}
 
+	function is_pos_route(route) {
+		if (route?.length && route[0] === "point-of-sale") {
+			return true;
+		}
+		const str = frappe.get_route_str?.() || "";
+		if (str === "point-of-sale" || str.startsWith("point-of-sale/")) {
+			return true;
+		}
+		const path = window.location.pathname || "";
+		return path.includes("/point-of-sale");
+	}
+
 	function is_closing_entry_route(route) {
 		if (!route?.length) {
 			return false;
@@ -284,41 +297,273 @@
 		return allowed.some((prefix) => routes_match(route, prefix));
 	}
 
-	function inject_cashier_desk_styles() {
+	function inject_pos_shell_styles() {
 		if (document.getElementById("kqs-cashier-desk-guard-styles")) {
 			return;
 		}
 		const style = document.createElement("style");
 		style.id = "kqs-cashier-desk-guard-styles";
+		// data-route rules work even if JS class toggle is late; class rules cover Close Till.
 		style.textContent = `
+			body[data-route="point-of-sale"] .body-sidebar-container,
+			body[data-route="point-of-sale"] .body-sidebar,
+			body[data-route="point-of-sale"] .body-sidebar-placeholder,
+			body[data-route="point-of-sale"] .sidebar-toggle-btn,
+			body.kqs-pos-fullscreen .body-sidebar-container,
+			body.kqs-pos-fullscreen .body-sidebar,
+			body.kqs-pos-fullscreen .body-sidebar-placeholder,
+			body.kqs-pos-fullscreen .sidebar-toggle-btn,
+			body.kqs-pos-fullscreen .layout-side-section,
+			body.kqs-pos-fullscreen .desk-sidebar,
+			body.kqs-pos-fullscreen .list-sidebar,
+			body.kqs-pos-fullscreen .sidebar-menu,
+			body.kqs-pos-fullscreen .standard-sidebar,
+			body.kqs-cashier-pos-only .body-sidebar-container,
+			body.kqs-cashier-pos-only .body-sidebar,
+			body.kqs-cashier-pos-only .body-sidebar-placeholder,
 			body.kqs-cashier-pos-only .layout-side-section,
 			body.kqs-cashier-pos-only .desk-sidebar,
 			body.kqs-cashier-pos-only .list-sidebar,
 			body.kqs-cashier-pos-only .sidebar-toggle-btn,
 			body.kqs-cashier-pos-only .navbar .dropdown-help,
 			body.kqs-cashier-pos-only .sidebar-menu,
-			body.kqs-cashier-pos-only .body-sidebar,
 			body.kqs-cashier-pos-only .standard-sidebar {
 				display: none !important;
+				width: 0 !important;
+				min-width: 0 !important;
+				max-width: 0 !important;
+				padding: 0 !important;
+				margin: 0 !important;
+				border: none !important;
+				overflow: hidden !important;
+				visibility: hidden !important;
+				pointer-events: none !important;
 			}
+			body[data-route="point-of-sale"] .main-section,
+			body[data-route="point-of-sale"] .layout-main-section-wrapper,
+			body[data-route="point-of-sale"] .page-container,
+			body.kqs-pos-fullscreen .main-section,
+			body.kqs-pos-fullscreen .layout-main-section-wrapper,
+			body.kqs-pos-fullscreen .page-container,
+			body.kqs-cashier-pos-only .main-section,
+			body.kqs-cashier-pos-only .page-container,
 			body.kqs-cashier-closing-form .layout-main-section-wrapper {
+				width: 100% !important;
+				max-width: 100% !important;
 				margin-left: 0 !important;
+				flex: 1 1 100% !important;
 			}
 		`;
 		document.head.appendChild(style);
 	}
 
-	function apply_cashier_desk_shell(route) {
-		if (!is_cashier_pos_only()) {
-			document.body.classList.remove("kqs-cashier-pos-only", "kqs-cashier-closing-form");
+	function hide_sidebar_dom() {
+		document
+			.querySelectorAll(
+				".body-sidebar-container, .body-sidebar, .body-sidebar-placeholder"
+			)
+			.forEach((el) => {
+				el.style.setProperty("display", "none", "important");
+				el.style.setProperty("width", "0", "important");
+				el.style.setProperty("visibility", "hidden", "important");
+				el.style.setProperty("pointer-events", "none", "important");
+			});
+	}
+
+	function should_hide_desk_sidebar(route) {
+		const active_route = route || frappe.get_route();
+		if (is_pos_route(active_route)) {
+			return true;
+		}
+		if (is_cashier_pos_only()) {
+			// Cashiers never get Desk chrome — including Close Till / cash-up form.
+			return true;
+		}
+		return false;
+	}
+
+	function hide_desk_sidebar_native(route) {
+		inject_pos_shell_styles();
+		if (!should_hide_desk_sidebar(route)) {
 			return;
 		}
-		inject_cashier_desk_styles();
-		document.body.classList.add("kqs-cashier-pos-only");
+		const page = frappe.container?.page?.page;
+		if (page) {
+			page.hide_sidebar = true;
+		}
+		try {
+			frappe.app?.sidebar?.toggle(true);
+		} catch (e) {
+			/* ignore */
+		}
+		hide_sidebar_dom();
+	}
+
+	function apply_pos_fullscreen_shell(route) {
+		inject_pos_shell_styles();
 		const active_route = route || frappe.get_route();
-		document.body.classList.toggle(
-			"kqs-cashier-closing-form",
-			is_closing_entry_route(active_route)
+		const on_pos = is_pos_route(active_route);
+		const cashier = is_cashier_pos_only();
+		const on_closing = is_closing_entry_route(active_route);
+
+		document.body.classList.toggle("kqs-pos-fullscreen", on_pos);
+		if (cashier) {
+			document.body.classList.add("kqs-cashier-pos-only");
+			document.body.classList.toggle("kqs-cashier-closing-form", on_closing);
+		} else {
+			document.body.classList.remove("kqs-cashier-pos-only", "kqs-cashier-closing-form");
+		}
+		hide_desk_sidebar_native(active_route);
+	}
+
+	function patch_frappe_sidebar_visibility() {
+		if (window._kqs_sidebar_visibility_patched) {
+			return;
+		}
+		const sidebar = frappe.app?.sidebar;
+		if (!sidebar) {
+			return;
+		}
+		window._kqs_sidebar_visibility_patched = true;
+
+		const orig_refresh = sidebar.refresh?.bind(sidebar);
+		const orig_toggle = sidebar.toggle?.bind(sidebar);
+
+		if (orig_refresh) {
+			sidebar.refresh = function () {
+				if (should_hide_desk_sidebar()) {
+					this.wrapper?.hide?.();
+					hide_sidebar_dom();
+					return;
+				}
+				return orig_refresh();
+			};
+		}
+		if (orig_toggle) {
+			sidebar.toggle = function (hide) {
+				if (should_hide_desk_sidebar()) {
+					return orig_toggle(true);
+				}
+				return orig_toggle(hide);
+			};
+		}
+
+		$(document).on("page-change.kqs_sidebar", () => {
+			hide_desk_sidebar_native();
+		});
+	}
+
+	function path_is_allowed_for_cashier(pathname) {
+		const path = (pathname || window.location.pathname || "").replace(/\/+$/, "") || "/";
+		if (path === "/app/point-of-sale" || path.startsWith("/app/point-of-sale/")) {
+			return true;
+		}
+		if (path === "/app/pos-closing-entry" || path.startsWith("/app/pos-closing-entry/")) {
+			return true;
+		}
+		// Login / assets / printview / API are not Desk browse targets.
+		if (
+			path === "/login" ||
+			path.startsWith("/api/") ||
+			path.startsWith("/assets/") ||
+			path.startsWith("/files/") ||
+			path.startsWith("/private/") ||
+			path.startsWith("/printview") ||
+			path.startsWith("/print")
+		) {
+			return true;
+		}
+		return false;
+	}
+
+	function hard_redirect_cashier_to_pos() {
+		if (!is_cashier_pos_only()) {
+			return false;
+		}
+		const path = (window.location.pathname || "").replace(/\/+$/, "") || "/";
+		if (path_is_allowed_for_cashier(path)) {
+			return false;
+		}
+		// Full navigation — no permission modal, no forbidden page flash.
+		window.location.replace(POS_HOME);
+		return true;
+	}
+
+	function soft_redirect_cashier_to_pos() {
+		if (!is_cashier_pos_only()) {
+			return;
+		}
+		if (frappe.set_route) {
+			const orig = window._kqs_orig_set_route || frappe.set_route.bind(frappe);
+			orig("point-of-sale");
+		} else {
+			window.location.replace(POS_HOME);
+		}
+	}
+
+	function install_cashier_set_route_guard() {
+		if (!is_cashier_pos_only() || window._kqs_cashier_set_route_guard || !frappe.set_route) {
+			return;
+		}
+		window._kqs_cashier_set_route_guard = true;
+		const orig_set_route = frappe.set_route.bind(frappe);
+		window._kqs_orig_set_route = orig_set_route;
+		frappe.set_route = function (...args) {
+			let route = args;
+			if (args.length === 1 && Array.isArray(args[0])) {
+				route = args[0];
+			} else if (args.length === 1 && typeof args[0] === "string") {
+				route = String(args[0])
+					.replace(/^\//, "")
+					.split("/")
+					.filter(Boolean);
+			}
+			if (route?.length && !route_is_allowed(route) && route[0] !== "login") {
+				return orig_set_route("point-of-sale");
+			}
+			return orig_set_route(...args);
+		};
+	}
+
+	function install_cashier_sidebar_click_block() {
+		if (!is_cashier_pos_only() || window._kqs_cashier_sidebar_click_block) {
+			return;
+		}
+		window._kqs_cashier_sidebar_click_block = true;
+		document.addEventListener(
+			"click",
+			(event) => {
+				if (!is_cashier_pos_only()) {
+					return;
+				}
+				const link = event.target?.closest?.(
+					".body-sidebar a, .body-sidebar-container a, .desk-sidebar a, a[href^='/app/']"
+				);
+				if (!link) {
+					return;
+				}
+				const href = link.getAttribute("href") || "";
+				if (!href || href === "#" || href.startsWith("javascript:")) {
+					// Sidebar items often use click handlers without href — always block sidebar.
+					if (link.closest(".body-sidebar, .body-sidebar-container, .desk-sidebar")) {
+						event.preventDefault();
+						event.stopPropagation();
+						soft_redirect_cashier_to_pos();
+					}
+					return;
+				}
+				try {
+					const url = new URL(href, window.location.origin);
+					if (!path_is_allowed_for_cashier(url.pathname)) {
+						event.preventDefault();
+						event.stopPropagation();
+						soft_redirect_cashier_to_pos();
+					}
+				} catch (e) {
+					/* ignore bad href */
+				}
+			},
+			true
 		);
 	}
 
@@ -337,28 +582,29 @@
 			route === "workspace" ||
 			route.startsWith("workspace/");
 		if (on_desk_home) {
-			frappe.set_route("point-of-sale");
+			soft_redirect_cashier_to_pos();
 		}
 	}
 
 	function guard_route() {
-		if (!is_cashier_pos_only()) {
+		if (hard_redirect_cashier_to_pos()) {
 			return;
 		}
 		const route = frappe.get_route();
-		apply_cashier_desk_shell(route);
+		patch_frappe_sidebar_visibility();
+		install_cashier_set_route_guard();
+		install_cashier_sidebar_click_block();
+		apply_pos_fullscreen_shell(route);
+
+		if (!is_cashier_pos_only()) {
+			return;
+		}
 		redirect_cashier_to_pos_home();
 		if (route_is_allowed(route)) {
 			return;
 		}
-		frappe.show_alert(
-			{
-				message: __("Desk access is restricted. Returning to Point of Sale."),
-				indicator: "orange",
-			},
-			4
-		);
-		frappe.set_route("point-of-sale");
+		// In-app route change to a forbidden Desk page — bounce with no modal.
+		soft_redirect_cashier_to_pos();
 	}
 
 	function install_route_guard() {
@@ -366,12 +612,29 @@
 			return;
 		}
 		window._kqs_cashier_route_guard = true;
-		apply_cashier_desk_shell();
+		// Run before paint when possible — pasted /app/item URLs never show content.
+		if (hard_redirect_cashier_to_pos()) {
+			return;
+		}
+		inject_pos_shell_styles();
+		apply_pos_fullscreen_shell();
 		frappe.router.on("change", () => {
+			guard_route();
 			frappe.after_ajax(guard_route);
 		});
 		if (frappe.ready) {
-			frappe.ready(() => frappe.after_ajax(guard_route));
+			frappe.ready(() => {
+				patch_frappe_sidebar_visibility();
+				guard_route();
+				frappe.after_ajax(guard_route);
+				setTimeout(guard_route, 50);
+				setTimeout(guard_route, 200);
+				setTimeout(guard_route, 800);
+			});
+		} else {
+			setTimeout(guard_route, 50);
+			setTimeout(guard_route, 200);
+			setTimeout(guard_route, 800);
 		}
 	}
 

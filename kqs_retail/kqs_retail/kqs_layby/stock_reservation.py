@@ -38,6 +38,25 @@ def get_reserved_qty(item_code: str, warehouse: str) -> float:
 	return flt(result[0][0] if result else 0)
 
 
+def get_reserved_qty_map(warehouse: str) -> dict[str, float]:
+	"""Batch reserved qty for all active layby items at a warehouse (avoids N+1)."""
+	if not warehouse:
+		return {}
+	rows = frappe.db.sql(
+		"""
+		SELECT li.item_code, COALESCE(SUM(li.qty), 0) AS qty
+		FROM `tabLayby Item` li
+		INNER JOIN `tabLayby Agreement` la ON la.name = li.parent
+		WHERE la.docstatus = 1 AND la.status = 'Active'
+		  AND la.warehouse = %s
+		GROUP BY li.item_code
+		""",
+		(warehouse,),
+		as_dict=True,
+	)
+	return {row.item_code: flt(row.qty) for row in rows}
+
+
 def get_sellable_qty(item_code: str, warehouse: str) -> float:
 	bin_qty = frappe.db.get_value(
 		"Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty"
