@@ -7,9 +7,13 @@ from frappe.utils import cint, cstr, flt
 
 
 def infer_template_code(item_code: str) -> str:
-	"""Guess template item code from a variant SKU (e.g. STYLE-9-BLACK → STYLE)."""
-	code = (item_code or "").strip()
-	if not code:
+	"""Guess template from a hyphenated variant SKU (e.g. STYLE-9-BLACK → STYLE).
+
+	Only for orphan repair. Never use this to group catalog rows — style codes
+	like ``1234-7`` are valid standalones and must not collapse under ``1234``.
+	"""
+	code = cstr(item_code or "").strip()
+	if not code or "-" not in code:
 		return ""
 	parts = code.split("-")
 	for i in range(len(parts) - 1, 0, -1):
@@ -20,15 +24,24 @@ def infer_template_code(item_code: str) -> str:
 
 
 def resolve_template_code(item_code: str) -> str:
-	"""Template code for catalog grouping — variant_of or inferred parent style."""
-	item_code = (item_code or "").strip()
+	"""Catalog / edit key: trust ``variant_of``, never hyphen-guess over real items.
+
+	If Item ``1234-7`` exists with empty ``variant_of``, it is its own style
+	(template or standalone) — even when ``1234`` also exists as a template.
+	"""
+	item_code = cstr(item_code or "").strip()
 	if not item_code:
 		return ""
-	variant_of = frappe.db.get_value("Item", item_code, "variant_of")
-	if variant_of:
-		return variant_of
-	inferred = infer_template_code(item_code)
-	return inferred or item_code
+	row = frappe.db.get_value(
+		"Item", item_code, ["variant_of", "has_variants"], as_dict=True
+	)
+	if not row:
+		# Missing Item row — last-resort hyphen guess for legacy callers.
+		return infer_template_code(item_code) or item_code
+	if row.variant_of:
+		return cstr(row.variant_of).strip()
+	# Existing item without variant_of = its own catalog key.
+	return item_code
 
 
 def variant_item_name(parent_name: str, attrs: dict) -> str:
@@ -144,20 +157,20 @@ def ensure_variant_not_orphaned(item_code: str) -> None:
 	if item.has_variants:
 		return
 
-	template_code = (item.variant_of or "").strip()
-	if not template_code:
+	template_code = cstr(item.variant_of or "").strip()
+	attrs = get_variant_attributes(item_code)
+	# Only hyphen-infer when this SKU already has variant attributes — so a
+	# standalone style like 1234-7 is never force-linked under template 1234.
+	if not template_code and attrs:
 		template_code = infer_template_code(item_code)
 		if template_code:
 			frappe.db.set_value("Item", item_code, "variant_of", template_code, update_modified=False)
 			item.variant_of = template_code
 
-	if not template_code:
+	if not template_code or not attrs:
 		return
 
 	template = frappe.get_cached_doc("Item", template_code)
-	attrs = get_variant_attributes(item_code)
-	if not attrs:
-		return
 
 	new_name = variant_item_name(template.item_name or template_code, attrs)
 	if (item.item_name or "").strip() != new_name:

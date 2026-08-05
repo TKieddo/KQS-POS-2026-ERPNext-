@@ -4,7 +4,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, today
+from frappe.utils import cint, cstr, flt, today
 
 from kqs_retail.utils.defaults import get_default_company
 from kqs_retail.utils.items import (
@@ -180,24 +180,21 @@ def list_source_catalog(
 		as_dict=True,
 	)
 
+	# Group by ERPNext variant_of only (COALESCE in SQL). Do not hyphen-infer —
+	# that wrongly merges standalone styles like 1234-7 under template 1234.
 	catalog: dict[str, dict] = {}
 	for row in rows:
-		key = resolve_template_code(row.item_code)
-		template_name = row.catalog_name or key
-		template_image = row.catalog_image
-		has_variants = bool(row.catalog_has_variants)
-		if key != row.catalog_code:
-			template_name = frappe.db.get_value("Item", key, "item_name") or key
-			template_image = frappe.db.get_value("Item", key, "image") or template_image
-			has_variants = bool(frappe.db.get_value("Item", key, "has_variants"))
+		key = cstr(row.catalog_code or row.item_code).strip()
+		if not key:
+			continue
 		if key not in catalog:
 			catalog[key] = {
 				"item_code": key,
-				"item_name": template_name,
+				"item_name": row.catalog_name or key,
 				"style_code": key,
-				"image": template_image,
+				"image": row.catalog_image,
 				"item_group": row.item_group,
-				"has_variants": has_variants,
+				"has_variants": bool(row.catalog_has_variants),
 				"available_qty": 0.0,
 			}
 		catalog[key]["available_qty"] += flt(row.qty)
@@ -210,8 +207,13 @@ def list_source_catalog(
 @frappe.whitelist()
 def get_transfer_lines(item_code: str, source_warehouse: str = "", in_stock_only: int = 0):
 	"""Return template name and transfer rows (variants or single item) with attributes."""
+	# jQuery / JSON can coerce numeric-looking codes; keep hyphenated SKUs as strings.
+	item_code = cstr(item_code or "").strip()
 	if not item_code:
 		return {"template_name": "", "template_code": "", "style_code": "", "lines": []}
+
+	if not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} was not found.").format(item_code))
 
 	item = frappe.get_cached_doc("Item", item_code)
 	template_code = resolve_template_code(item.name)
@@ -283,8 +285,9 @@ def get_bulk_transfer_lines(item_codes: str, source_warehouse: str = "", in_stoc
 
 	seen = set()
 	lines = []
-	for code in codes:
-		if code in seen:
+	for raw in codes:
+		code = cstr(raw or "").strip()
+		if not code or code in seen:
 			continue
 		seen.add(code)
 		result = get_transfer_lines(code, source_warehouse, in_stock_only=in_stock_only)
