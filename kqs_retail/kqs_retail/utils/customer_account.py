@@ -386,22 +386,31 @@ def get_account_sale_payment_amount(doc) -> float:
 
 
 def _invoice_real_money_paid(doc) -> float:
-	"""Cash/card/mobile — excludes store credit and On Account rows."""
+	"""Cash/card/mobile — excludes store credit, On Account, and Layby Settlement."""
+	from kqs_retail.utils.layby_settlement import is_layby_settlement_mode
 	from kqs_retail.utils.store_credit import is_store_credit_mode
 
 	total = 0.0
 	for row in doc.get("payments") or []:
-		if is_store_credit_mode(row.mode_of_payment) or is_account_sale_mode(row.mode_of_payment):
+		if (
+			is_store_credit_mode(row.mode_of_payment)
+			or is_account_sale_mode(row.mode_of_payment)
+			or is_layby_settlement_mode(row.mode_of_payment)
+		):
 			continue
 		total += flt(row.amount)
 	return total
 
 
 def _invoice_allocated_total(doc) -> float:
+	from kqs_retail.utils.layby_settlement import get_layby_settlement_payment_amount
 	from kqs_retail.utils.store_credit import get_store_credit_payment_amount
 
-	return _invoice_real_money_paid(doc) + get_store_credit_payment_amount(doc) + get_account_sale_payment_amount(
-		doc
+	return (
+		_invoice_real_money_paid(doc)
+		+ get_store_credit_payment_amount(doc)
+		+ get_account_sale_payment_amount(doc)
+		+ get_layby_settlement_payment_amount(doc)
 	)
 
 

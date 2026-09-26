@@ -132,7 +132,6 @@ function kqs_maybe_auto_print_cashup(docname) {
 	if (!auto_print || !docname) return;
 	// One auto-print per closing per browser session — prevents repeat popups on POS.
 	if (kqs_cashup_was_auto_printed(docname)) return;
-	kqs_cashup_mark_auto_printed(docname);
 
 	setTimeout(() => {
 		const print_fn = kqs_get_silent_print_fn();
@@ -150,7 +149,10 @@ function kqs_maybe_auto_print_cashup(docname) {
 
 		Promise.resolve(print_fn("POS Closing Entry", docname, fmt, "", { browser_fallback: false }))
 			.then((method) => {
-				if (method === "qz") return;
+				if (method === "qz") {
+					kqs_cashup_mark_auto_printed(docname);
+					return;
+				}
 				frappe.show_alert({
 					message: __(
 						"Cash up saved. Printer was busy — use Print Cash Up if you need a paper copy."
@@ -243,9 +245,40 @@ function kqs_load_closing_blockers(frm) {
 				return;
 			}
 			frm.kqs_closing_blockers = r.message.blockers || [];
+			frm.kqs_till_breakdown = r.message.till_breakdown || null;
+			if (r.message.payment_reconciliation?.length) {
+				kqs_apply_server_reconciliation(frm, r.message.payment_reconciliation);
+			}
 			show_closing_status_headline(frm);
 		},
 	});
+}
+
+function kqs_apply_server_reconciliation(frm, rows) {
+	if (!frm.doc || frm.doc.docstatus !== 0 || !rows?.length) {
+		return;
+	}
+	const by_mode = {};
+	(rows || []).forEach((row) => {
+		if (row.mode_of_payment) {
+			by_mode[row.mode_of_payment] = row;
+		}
+	});
+	(frm.doc.payment_reconciliation || []).forEach((pay) => {
+		const src = by_mode[pay.mode_of_payment];
+		if (!src) {
+			return;
+		}
+		pay.expected_amount = src.expected_amount;
+		if (pay.closing_amount == null || pay.closing_amount === "") {
+			pay.closing_amount = src.closing_amount;
+		}
+		pay.difference = flt(pay.closing_amount) - flt(pay.expected_amount);
+	});
+	frm.refresh_field("payment_reconciliation");
+	// Display-only refresh — must not mark the form dirty or ERPNext will fight Submit.
+	frm.doc.__unsaved = 0;
+	frm.refresh_header();
 }
 
 function kqs_prepare_then_submit(frm) {
@@ -337,7 +370,6 @@ function kqs_submit_closing_entry(frm) {
 			freeze_message: __("Submitting POS closing..."),
 			callback(r) {
 				if (r.exc) {
-					kqs_load_closing_blockers(frm);
 					frm.reload_doc();
 					return;
 				}
@@ -355,7 +387,6 @@ function kqs_submit_closing_entry(frm) {
 				});
 			},
 			error() {
-				kqs_load_closing_blockers(frm);
 				frm.reload_doc();
 			},
 		});
@@ -463,5 +494,46 @@ function show_closing_status_headline(frm) {
 		frm.dashboard.set_headline(
 			__("Invoices are still loading. Wait a moment, then use Submit Closing at the top.")
 		);
+		return;
+	}
+
+	const bd = frm.kqs_till_breakdown;
+	if (bd?.totals) {
+		const fmt = (n) => format_currency(flt(n), frm.doc.currency || frappe.boot?.sysdefaults?.currency);
+		const money_in = flt(bd.totals.sales) + flt(bd.totals.layby) + flt(bd.totals.account) - flt(bd.totals.refunds);
+		frm.dashboard.set_headline(
+			__(
+				"Money in till {0} = Sales {1} + Layby {2} + Account {3}{4}. Laybys are not listed under POS Transactions — they appear as Layby Received. Count the drawer against Expected on each payment mode.",
+				[
+					fmt(money_in),
+					fmt(bd.totals.sales),
+					fmt(bd.totals.layby),
+					fmt(bd.totals.account),
+					flt(bd.totals.refunds)
+						? __(" − Refunds {0}", [fmt(bd.totals.refunds)])
+						: "",
+				]
+			)
+		);
+	} else if (frm.doc.docstatus === 1) {
+		const money =
+			flt(frm.doc.kqs_money_in_till) ||
+			flt(frm.doc.kqs_sales_tender) +
+				flt(frm.doc.kqs_layby_received) +
+				flt(frm.doc.kqs_account_collected) -
+				flt(frm.doc.kqs_till_refunds);
+		if (money || flt(frm.doc.kqs_layby_received)) {
+			const fmt = (n) => format_currency(flt(n), frm.doc.currency || frappe.boot?.sysdefaults?.currency);
+			frm.dashboard.set_headline(
+				__(
+					"Money in till {0} (Sales {1} + Layby {2}). Laybys are not listed under POS Transactions.",
+					[
+						fmt(money),
+						fmt(frm.doc.kqs_sales_tender),
+						fmt(frm.doc.kqs_layby_received),
+					]
+				)
+			);
+		}
 	}
 }

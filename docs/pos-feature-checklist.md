@@ -57,7 +57,7 @@ Tick items as you complete them: change `[ ]` to `[x]`.
 | [ ] | Named customer on sale | *(ERPNext)* Customer field on POS |
 | [ ] | Customer lookup or quick create | *(ERPNext)* |
 | [ ] | Stock quantity visible at till | *(ERPNext)* On-hand qty |
-| [ ] | Sellable qty (minus layby holds) | *(KQS)* API exists; POS uses on-hand today |
+| [ ] | Sellable qty (minus layby holds) | *(KQS)* POS `get_items` overlays sellable at profile warehouse |
 | [ ] | Out-of-stock warning | *(ERPNext)* |
 | [ ] | Sale reduces store stock | *(ERPNext)* POS Profile → Update Stock |
 

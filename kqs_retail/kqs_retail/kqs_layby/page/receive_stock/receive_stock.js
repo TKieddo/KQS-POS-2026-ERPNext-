@@ -416,13 +416,17 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 	});
 
 	if (page.set_secondary_action) {
-		page.set_secondary_action(__("Assign to Branch"), () => {
-			frappe.set_route("assign-to-branch");
+		page.set_secondary_action(__("Bulk Stock Import"), () => {
+			frappe.set_route("bulk-stock-import");
 		});
+	}
+	if (page.add_inner_button) {
+		page.add_inner_button(__("Assign to Branch"), () => frappe.set_route("assign-to-branch"));
 	}
 	if (page.add_menu_item) {
 		page.add_menu_item(__("Edit Product"), () => frappe.set_route("edit-product"));
 		page.add_menu_item(__("Add Product"), () => frappe.set_route("quick-add-product"));
+		page.add_menu_item(__("Assign to Branch"), () => frappe.set_route("assign-to-branch"));
 	}
 
 	if (!$("#kqs-receive-stock-style").length) {

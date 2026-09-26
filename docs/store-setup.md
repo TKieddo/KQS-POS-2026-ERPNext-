@@ -180,9 +180,21 @@ Supplier **Purchase Receipt** remains available in ERPNext for formal PO receivi
 ## Manager catalog flow (daily use)
 
 1. **Add Product** (`/app/quick-add-product`) — name, category pills, size/color variants, prices, optional opening qty
-2. **Edit Product** (`/app/edit-product`) — update name/categories/prices; add new size/colour variants without deleting
-3. **Receive Stock** (`/app/receive-stock`) — inbound qty for existing SKUs (default warehouse **Central**)
-4. **Assign to Branch** (`/app/assign-to-branch`) — transfer sellable stock between warehouses (Central ↔ store, or store ↔ store)
+2. **Bulk Stock Import** (`/app/bulk-stock-import`) — CSV or paper photo → preview → create / add variants / receive (see [bulk-stock-import.md](bulk-stock-import.md))
+3. **Edit Product** (`/app/edit-product`) — update name/categories/prices; add new size/colour variants without deleting
+4. **Receive Stock** (`/app/receive-stock`) — inbound qty for existing SKUs (default warehouse **Central**)
+5. **Assign to Branch** (`/app/assign-to-branch`) — transfer sellable stock between warehouses (Central ↔ store, or store ↔ store)
+6. **Remove from branch** — Edit Product menu → pick branch → tick variants → **Discard** (default, zeros sellable at that store only) or optionally transfer to Central. Confirm required. Other branches unchanged.
+7. **Delete from catalog** — Item list / form → zeros **all** warehouses, then hard-delete or archive as `DEL-…` so the SKU can be recreated **empty**
+
+### Catalog delete vs re-add
+
+| Action | Effect |
+|--------|--------|
+| Delete from catalog | Company-wide. Stock → 0 everywhere. Hard delete, or archive to `DEL-{sku}-{timestamp}` (disabled). |
+| Re-add same style | **New** Item with empty stock. Qty typed on Add/Receive is a new receipt — not old stock resurfacing. |
+| Style number after create | **Immutable** on Edit Product. |
+| Active layby on SKU | Catalog delete is **blocked** until layby is completed or cancelled. |
 
 Use **Stock → Item** only for admin edge cases. Stock take / cycle count: ERPNext **Stock Reconciliation**.
 

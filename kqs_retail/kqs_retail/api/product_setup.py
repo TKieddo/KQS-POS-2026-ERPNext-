@@ -254,7 +254,7 @@ def create_product_with_variants(
 
 @frappe.whitelist()
 def delete_items(item_codes: str):
-	"""Delete Item(s) from list/form — variants first; disable if linked to history."""
+	"""Delete catalog items: zero stock, purge when safe, else archive to free SKU."""
 	raw = json.loads(item_codes) if isinstance(item_codes, str) else item_codes
 	if not isinstance(raw, list):
 		frappe.throw(_("Invalid item list."))

@@ -1,13 +1,30 @@
-{# KQS Layby Customer — compact columns thermal #}
+{# KQS Layby Customer — clear payment receipt (deposit or installment) #}
+{%- set last_rows = frappe.db.sql(
+	"SELECT amount, mode_of_payment, posting_date FROM `tabLayby Payment` WHERE layby_agreement=%s AND docstatus=1 ORDER BY creation DESC LIMIT 1",
+	(doc.name,),
+	as_dict=True,
+) -%}
+{%- set paid_today = frappe.utils.flt(last_rows[0].amount) if last_rows else 0 -%}
+{%- set pay_mode = (last_rows[0].mode_of_payment or "") if last_rows else "" -%}
+{%- set pay_count = frappe.db.count("Layby Payment", {"layby_agreement": doc.name, "docstatus": 1}) or 0 -%}
+{%- set is_first = pay_count <= 1 -%}
+{%- set bal = frappe.utils.flt(doc.balance_amount) -%}
+{%- set done = bal <= 0.009 -%}
+
 <div class="kqs-rcpt">
 	{{ kqs_logo() }}
 	{{ kqs_header_brand() }}
 
-	<div class="kqs-center kqs-policy-title" style="margin-top: 1.5mm;">Layby Receipt</div>
+	<div class="kqs-center kqs-policy-title" style="margin-top: 1.5mm;">
+		{%- if done -%}Layby Paid in Full
+		{%- elif is_first -%}Layby Deposit
+		{%- else -%}Layby Payment
+		{%- endif -%}
+	</div>
 
 	<hr class="kqs-rule" />
 	{{ kqs_meta_stack() }}
-	{%- if doc.due_date -%}
+	{%- if doc.due_date and not done -%}
 	<div class="kqs-meta-stack" style="margin-top: 0;">
 		<div>Due: {{ doc.get_formatted("due_date") }}</div>
 	</div>
@@ -32,25 +49,39 @@
 
 	<div class="kqs-totals">
 		<div class="kqs-row">
-			<span>Total</span>
+			<span>Agreement total</span>
 			<span>{{ kqs_money(doc.total_amount) }}</span>
 		</div>
-		<div class="kqs-row">
-			<span>Deposit ({{ doc.deposit_percent }}%)</span>
-			<span>{{ kqs_money(doc.deposit_amount) }}</span>
+
+		{%- if paid_today -%}
+		<div class="kqs-row kqs-grand">
+			<span>
+				{%- if is_first -%}Paid today (deposit)
+				{%- else -%}Paid today
+				{%- endif -%}
+				{%- if pay_mode -%} · {{ pay_mode }}{%- endif -%}
+			</span>
+			<span>{{ kqs_money(paid_today) }}</span>
 		</div>
+		{%- endif -%}
+
 		<div class="kqs-row">
-			<span>Paid</span>
+			<span>Total paid so far</span>
 			<span>{{ kqs_money(doc.paid_amount) }}</span>
 		</div>
+
 		<div class="kqs-row kqs-grand">
-			<span>Balance</span>
+			<span>{%- if done -%}Balance{%- else -%}Balance remaining{%- endif -%}</span>
 			<span>{{ kqs_money(doc.balance_amount) }}</span>
 		</div>
 	</div>
 
 	<hr class="kqs-rule" />
-	<div class="kqs-thanks">Thank you for shopping with us</div>
+	<div class="kqs-thanks">
+		{%- if done -%}Thank you — layby complete
+		{%- else -%}Thank you for your payment
+		{%- endif -%}
+	</div>
 	<hr class="kqs-rule" />
 
 	{{ kqs_policy() }}

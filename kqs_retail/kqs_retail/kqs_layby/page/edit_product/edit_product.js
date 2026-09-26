@@ -1107,12 +1107,279 @@ frappe.pages["edit-product"].on_page_load = function (wrapper) {
 		if (page.clear_menu) page.clear_menu();
 		page.set_primary_action(__("Save Changes"), save_all);
 		if (page.set_secondary_action) {
-			page.set_secondary_action(__("Receive Stock"), () => frappe.set_route("receive-stock"));
+			page.set_secondary_action(__("Bulk Stock Import"), () =>
+				frappe.set_route("bulk-stock-import")
+			);
+		}
+		if (page.add_inner_button) {
+			page.add_inner_button(__("Receive Stock"), () => frappe.set_route("receive-stock"));
 		}
 		if (page.add_menu_item) {
 			page.add_menu_item(__("Add Product"), () => frappe.set_route("quick-add-product"));
+			page.add_menu_item(__("Receive Stock"), () => frappe.set_route("receive-stock"));
 			page.add_menu_item(__("Assign to Branch"), () => frappe.set_route("assign-to-branch"));
+			page.add_menu_item(__("Remove from branch…"), () => open_remove_from_branch());
 		}
+	}
+
+	function open_remove_from_branch() {
+		if (!loaded_code) {
+			frappe.msgprint(__("Load a product first."));
+			return;
+		}
+
+		let stock_lines = [];
+
+		const d = new frappe.ui.Dialog({
+			title: __("Remove from branch"),
+			size: "large",
+			fields: [
+				{
+					fieldtype: "HTML",
+					options: `<p class="text-muted">${__(
+						"Clears stock at <b>one branch only</b>. Other stores stay unchanged. The product stays in the catalog. Active layby holds are kept."
+					)}</p>`,
+				},
+				{
+					fieldname: "branch_warehouse",
+					fieldtype: "Link",
+					options: "Warehouse",
+					label: __("Branch"),
+					reqd: 1,
+					get_query() {
+						return {
+							query: "kqs_retail.api.stock_transfer.kqs_warehouse_query",
+							filters: { exclude_central: 1 },
+						};
+					},
+					onchange() {
+						const branch = (d.get_value("branch_warehouse") || "").trim();
+						if (!branch) {
+							render_variant_checks([]);
+							return;
+						}
+						// Debounce — Link fires onchange repeatedly while searching.
+						clearTimeout(d._kqs_branch_timer);
+						d._kqs_branch_timer = setTimeout(() => load_branch_lines(), 350);
+					},
+				},
+				{
+					fieldname: "action",
+					fieldtype: "Select",
+					label: __("Action"),
+					options: "Discard at this branch\nTransfer sellable to Central",
+					default: "Discard at this branch",
+					reqd: 1,
+				},
+				{ fieldname: "variants_html", fieldtype: "HTML", label: __("Variants at branch") },
+			],
+			primary_action_label: __("Continue…"),
+			primary_action(values) {
+				const branch = (values.branch_warehouse || "").trim();
+				if (!branch) {
+					frappe.msgprint(__("Select a branch warehouse."));
+					return;
+				}
+				const selected = [];
+				d.$wrapper.find(".kqs-branch-var:checked").each(function () {
+					const code = String($(this).attr("data-code") || "").trim();
+					if (code) selected.push(code);
+				});
+				if (!selected.length) {
+					frappe.msgprint(__("Tick at least one variant with stock."));
+					return;
+				}
+
+				const is_discard = String(values.action || "").indexOf("Transfer") < 0;
+				const list_rows = selected
+					.slice(0, 12)
+					.map((c) => {
+						const line = stock_lines.find((l) => l.item_code === c);
+						const name = frappe.utils.escape_html(
+							(line && (line.attributes || line.sku)) || c
+						);
+						const qty = line ? plain_qty(line.sellable_qty) : "—";
+						return `<li><span>${name}</span><span class="text-muted"> · ${qty} ${__(
+							"sellable"
+						)}</span></li>`;
+					})
+					.join("");
+				const more =
+					selected.length > 12
+						? `<li class="text-muted">${__("…and {0} more", [selected.length - 12])}</li>`
+						: "";
+
+				const confirm_d = new frappe.ui.Dialog({
+					title: is_discard ? __("Confirm discard") : __("Confirm transfer"),
+					fields: [
+						{
+							fieldtype: "HTML",
+							options: `
+								<p style="margin:0 0 0.75rem;">
+									${
+										is_discard
+											? __(
+													"Discard sellable stock at <b>{0}</b> for <b>{1}</b> variant(s)?",
+													[frappe.utils.escape_html(branch), selected.length]
+											  )
+											: __(
+													"Transfer sellable stock from <b>{0}</b> to Central for <b>{1}</b> variant(s)?",
+													[frappe.utils.escape_html(branch), selected.length]
+											  )
+									}
+								</p>
+								<ul style="margin:0 0 0.75rem; padding-left:1.25rem; line-height:1.5;">
+									${list_rows}${more}
+								</ul>
+								<p class="text-muted" style="margin:0; font-size:12px;">
+									${
+										is_discard
+											? __(
+													"Other branches stay unchanged. Stock is written off at this warehouse (not moved to Central)."
+											  )
+											: __("Other branches stay unchanged.")
+									}
+								</p>`,
+						},
+					],
+					primary_action_label: is_discard ? __("Discard") : __("Transfer"),
+					primary_action() {
+						confirm_d.hide();
+						d.hide();
+						const method = is_discard
+							? "kqs_retail.api.stock_transfer.discard_branch_stock"
+							: "kqs_retail.api.stock_transfer.return_branch_stock_to_central";
+						frappe.call({
+							method,
+							args: {
+								source_warehouse: branch,
+								item_codes: JSON.stringify(selected),
+								expand_templates: 0,
+							},
+							freeze: true,
+							freeze_message: is_discard
+								? __("Discarding branch stock…")
+								: __("Transferring to Central…"),
+							callback(r) {
+								if (r.exc) return;
+								const msg = r.message || {};
+								const docname = msg.stock_reconciliation || msg.stock_entry || "";
+								frappe.show_alert({
+									message: is_discard
+										? __("Discarded at branch ({0} line(s)): {1}", [
+												msg.lines,
+												docname,
+										  ])
+										: __("Transferred to Central ({0} line(s)): {1}", [
+												msg.lines,
+												docname,
+										  ]),
+									indicator: "green",
+								});
+								load_product(loaded_code);
+							},
+						});
+					},
+					secondary_action_label: __("Cancel"),
+					secondary_action() {
+						confirm_d.hide();
+					},
+				});
+				confirm_d.show();
+			},
+		});
+
+		function plain_qty(value) {
+			const n = parseFloat(value);
+			if (isNaN(n)) return "0";
+			return Number.isInteger(n) ? String(n) : n.toFixed(2);
+		}
+
+		function render_variant_checks(lines) {
+			const $wrap = d.fields_dict.variants_html.$wrapper;
+			stock_lines = lines || [];
+			if (!stock_lines.length) {
+				$wrap.html(
+					`<p class="text-muted">${__(
+						"No stock for this style at the selected branch (or pick a branch first)."
+					)}</p>`
+				);
+				return;
+			}
+			const rows = stock_lines
+				.map((line) => {
+					const label = frappe.utils.escape_html(
+						line.attributes || line.item_name || line.sku
+					);
+					const sku = frappe.utils.escape_html(line.sku || line.item_code);
+					const disabled = flt(line.sellable_qty) <= 0 ? "disabled" : "";
+					const checked = flt(line.sellable_qty) > 0 ? "checked" : "";
+					return `<tr>
+						<td class="text-center">
+							<input type="checkbox" class="kqs-branch-var" data-code="${frappe.utils.escape_html(
+								line.item_code
+							)}" ${checked} ${disabled} />
+						</td>
+						<td>
+							<div class="bold">${label}</div>
+							<div class="text-muted small">${sku}</div>
+						</td>
+						<td class="text-right">${format_float(line.on_hand)}</td>
+						<td class="text-right">${format_float(line.sellable_qty)}</td>
+						<td class="text-right text-muted">${format_float(line.reserved_qty)}</td>
+					</tr>`;
+				})
+				.join("");
+			$wrap.html(`
+				<div class="mb-2">
+					<button type="button" class="btn btn-xs btn-default kqs-branch-select-all">${__("Select all")}</button>
+					<button type="button" class="btn btn-xs btn-default kqs-branch-select-none">${__("Select none")}</button>
+				</div>
+				<table class="table table-bordered table-sm">
+					<thead><tr>
+						<th style="width:36px;"></th>
+						<th>${__("Variant")}</th>
+						<th class="text-right">${__("On hand")}</th>
+						<th class="text-right">${__("Sellable")}</th>
+						<th class="text-right">${__("Layby hold")}</th>
+					</tr></thead>
+					<tbody>${rows}</tbody>
+				</table>`);
+			$wrap.find(".kqs-branch-select-all").on("click", () => {
+				$wrap.find(".kqs-branch-var:not(:disabled)").prop("checked", true);
+			});
+			$wrap.find(".kqs-branch-select-none").on("click", () => {
+				$wrap.find(".kqs-branch-var").prop("checked", false);
+			});
+		}
+
+		function load_branch_lines() {
+			const branch = (d.get_value("branch_warehouse") || "").trim();
+			if (!branch) {
+				render_variant_checks([]);
+				return;
+			}
+			const seq = (d._kqs_lines_seq = (d._kqs_lines_seq || 0) + 1);
+			frappe.call({
+				method: "kqs_retail.api.stock_transfer.get_branch_stock_lines",
+				args: { item_code: loaded_code, warehouse: branch },
+				callback(r) {
+					if (seq !== d._kqs_lines_seq) return;
+					if (r.exc) {
+						render_variant_checks([]);
+						return;
+					}
+					render_variant_checks((r.message && r.message.lines) || []);
+				},
+			});
+		}
+
+		function flt(v) {
+			return parseFloat(v) || 0;
+		}
+
+		d.show();
+		render_variant_checks([]);
 	}
 
 	function load_defaults() {

@@ -1,7 +1,7 @@
 /* Copyright (c) 2026, KQS — Keep KQS Cashier on Point of Sale, not full Desk. */
 (function () {
 	const POS_PAGE_KEY = "_page:point-of-sale";
-	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 54";
+	const POS_SCRIPT_VERSION = "KQS_POS_PAGE_SCRIPT_VERSION = 68";
 	const POS_HOME = "/app/point-of-sale";
 
 	function bust_stale_pos_page_cache() {
@@ -97,7 +97,11 @@
 					kqs_prepare_and_open_closing(data.opening.name);
 					return;
 				}
-				// Profile already open (often same shared cashier after a race) → close or pick.
+				if (data.action === "pick" || data.can_join) {
+					frappe.set_route("point-of-sale");
+					return;
+				}
+				// Cashier: this till is already open by someone else → close screen.
 				if (
 					title_s.includes("POS Opening Entry Exists") ||
 					title_s.includes("Cannot Assign Cashier")

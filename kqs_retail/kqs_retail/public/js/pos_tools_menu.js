@@ -2,7 +2,7 @@
  * After editing this file, run: python scripts/merge_pos_tools_menu.py
  */
 
-const KQS_POS_TOOLS_MENU_VERSION = 6;
+const KQS_POS_TOOLS_MENU_VERSION = 9;
 
 frappe.provide("kqs_retail.pos_tools_menu");
 
@@ -44,9 +44,107 @@ kqs_retail.pos_tools_menu = (function () {
 		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.47 8.47a.75.75 0 0 1 1.06 0L12 10.94l2.47-2.47a.75.75 0 1 1 1.06 1.06L13.06 12l2.47 2.47a.75.75 0 0 1-1.06 1.06L12 13.06l-2.47 2.47a.75.75 0 0 1-1.06-1.06L10.94 12 8.47 9.53a.75.75 0 0 1 0-1.06z"/><path d="M4.5 4.5A9 9 0 1 1 3 12a9 9 0 0 1 1.5-7.5z" opacity=".18"/></svg>`;
 	}
 
+	function icon_till() {
+		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.75 4h8.5A.75.75 0 0 1 17 4.75V7H7V4.75A.75.75 0 0 1 7.75 4z"/><path d="M4 8h16a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a1 1 0 0 1 1-1zm3 3.25a.75.75 0 0 0 0 1.5h10a.75.75 0 0 0 0-1.5H7zm4 3.5a.75.75 0 0 0 0 1.5h2a.75.75 0 0 0 0-1.5h-2z"/></svg>`;
+	}
+
 	function icon_logout() {
 		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.5 3.75a.75.75 0 0 1 .75-.75h6A2.25 2.25 0 0 1 19.5 5.25v13.5A2.25 2.25 0 0 1 17.25 21h-6a.75.75 0 0 1 0-1.5h6a.75.75 0 0 0 .75-.75V5.25a.75.75 0 0 0-.75-.75h-6a.75.75 0 0 1-.75-.75z"/><path d="M3.22 11.47a.75.75 0 0 0 0 1.06l3.75 3.75a.75.75 0 1 0 1.06-1.06L5.81 12.75H14a.75.75 0 0 0 0-1.5H5.81l2.22-2.22a.75.75 0 0 0-1.06-1.06l-3.75 3.5z"/></svg>`;
 	}
+
+	function open_till_dialog(pos) {
+		const reason_keys = {
+			"Check change": "change",
+			"Withdraw to buy something": "withdraw",
+			"Count cash": "count",
+			Other: "other",
+		};
+		const d = new frappe.ui.Dialog({
+			title: __("Open till"),
+			fields: [
+				{
+					fieldname: "reason",
+					fieldtype: "Select",
+					label: __("Reason"),
+					reqd: 1,
+					default: "Check change",
+					options: [
+						"Check change",
+						"Withdraw to buy something",
+						"Count cash",
+						"Other",
+					].join("\n"),
+				},
+				{
+					fieldname: "notes",
+					fieldtype: "Small Text",
+					label: __("Notes"),
+					description: __("Required for Other. Optional for the rest."),
+				},
+			],
+			primary_action_label: __("Open till"),
+			primary_action(values) {
+				const reason_label = String(values.reason || "").trim();
+				const reason = reason_keys[reason_label] || "";
+				const notes = String(values.notes || "").trim();
+				if (!reason) {
+					frappe.msgprint(__("Select a reason to open the till."));
+					return;
+				}
+				if (reason === "other" && !notes) {
+					frappe.msgprint(__("Add a short note for Other."));
+					return;
+				}
+				d.disable_primary_action();
+				frappe.call({
+					method: "kqs_retail.api.pos.log_till_open",
+					args: { reason, notes },
+					freeze: true,
+					freeze_message: __("Opening till…"),
+					callback(r) {
+						if (r.exc) {
+							d.enable_primary_action();
+							return;
+						}
+						const kick =
+							window.kqs_open_drawer || kqs_retail.silent_print?.open_drawer;
+						const after = (ok) => {
+							d.hide();
+							kqs_retail.pos_tools_menu.close();
+							if (ok) {
+								frappe.show_alert({
+									message: __("Till opened — no receipt printed."),
+									indicator: "green",
+								});
+							} else {
+								frappe.show_alert(
+									{
+										message: __(
+											"Reason saved. Couldn’t kick the drawer from the printer — use the key if needed."
+										),
+										indicator: "orange",
+									},
+									10
+								);
+							}
+						};
+						if (typeof kick !== "function") {
+							after(false);
+							return;
+						}
+						Promise.resolve(kick())
+							.then(() => after(true))
+							.catch(() => after(false));
+					},
+					error() {
+						d.enable_primary_action();
+					},
+				});
+			},
+		});
+		d.show();
+	}
+
 
 	function confirm_logout(on_confirm) {
 		frappe.confirm(
@@ -131,10 +229,25 @@ kqs_retail.pos_tools_menu = (function () {
 				desc: __("Reprint receipts or start a return quickly."),
 				gradient: "linear-gradient(145deg, #DA8FFF 0%, #BF5AF2 100%)",
 				icon: icon_recent(),
+				restore_pos: true,
 				action() {
-					if (typeof pos.toggle_recent_order === "function") {
+					if (typeof kqs_retail?.point_of_sale?.open_recent_orders === "function") {
+						kqs_retail.point_of_sale.open_recent_orders(pos);
+					} else if (typeof pos.toggle_recent_order === "function") {
+						pos.$components_wrapper?.show?.();
 						pos.toggle_recent_order();
 					}
+				},
+			},
+			{
+				id: "open-till",
+				title: __("Open Till"),
+				desc: __("Open the cash drawer without a sale or receipt."),
+				gradient: "linear-gradient(145deg, #A3B1BF 0%, #4A5560 100%)",
+				icon: icon_till(),
+				stay_on_menu: true,
+				action() {
+					open_till_dialog(pos);
 				},
 			},
 			{
@@ -143,6 +256,7 @@ kqs_retail.pos_tools_menu = (function () {
 				desc: __("End your session and prepare the closing entry."),
 				gradient: "linear-gradient(145deg, #AEAEB2 0%, #636366 100%)",
 				icon: icon_close(),
+				restore_pos: true,
 				action() {
 					if (typeof pos.close_pos === "function") {
 						pos.close_pos();
@@ -410,6 +524,10 @@ kqs_retail.pos_tools_menu = (function () {
 	}
 
 	function render_tiles(pos) {
+		if (!ensure_layout_in_layer(pos)) {
+			frappe.msgprint(__("Menu could not load. Reload the page and try again."));
+			return;
+		}
 		const tiles = get_tiles(pos);
 		const html = tiles
 			.map((tile) => {
@@ -430,8 +548,12 @@ kqs_retail.pos_tools_menu = (function () {
 			const tile = tiles.find((row) => row.id === id);
 			if (!tile) return;
 			const target_pos = active_pos;
+			if (tile.stay_on_menu) {
+				tile.action(target_pos);
+				return;
+			}
 			const run = () => {
-				close({ restore_pos: false });
+				close({ restore_pos: tile.restore_pos === true });
 				frappe.after_ajax(() => tile.action(target_pos));
 			};
 			// Confirm first while Menu is still visible — cancel must leave the till usable.
@@ -441,6 +563,74 @@ kqs_retail.pos_tools_menu = (function () {
 			}
 			run();
 		});
+	}
+
+	function menu_layer_attached(pos) {
+		if (!$layer?.length) return false;
+		const mount = get_pos_mount(pos);
+		if (!mount?.length) return false;
+		const node = $layer[0];
+		return Boolean(node?.isConnected && mount[0]?.contains(node));
+	}
+
+	function detach_menu_layer() {
+		$(window).off("resize.kqsToolsMenu");
+		hub_mount?.removeClass("kqs-tools-menu-mount-host");
+		hub_scroll_root?.removeClass("kqs-tools-menu-mount");
+		clear_layout_styles();
+		$layer?.remove();
+		$layer = null;
+		layout = null;
+		hub_mount = null;
+		hub_scroll_root = null;
+	}
+
+	function reset_dom(opts = {}) {
+		const restore = opts.restore_components !== false;
+		if (restore && active_pos?.$components_wrapper?.length) {
+			active_pos.$components_wrapper.show();
+			try {
+				if (active_pos.page?.set_title) {
+					active_pos.page.set_title(__("Point of Sale"));
+				}
+				if (typeof active_pos.new_invoice_event === "function") {
+					active_pos.page?.set_primary_action?.(
+						__("New Invoice"),
+						() => active_pos.new_invoice_event()
+					);
+				}
+				if (typeof active_pos.toggle_recent_order === "function") {
+					active_pos.page?.set_secondary_action?.(
+						__("Recent Orders"),
+						() => active_pos.toggle_recent_order()
+					);
+				}
+				active_pos.page?.btn_secondary?.show?.();
+			} catch (e) {
+				/* POS may already be torn down */
+			}
+		}
+		detach_menu_layer();
+		active_pos = null;
+	}
+
+	function ensure_layout_in_layer(pos) {
+		ensure_dom();
+		if (layout?.length && !layout[0]?.isConnected) {
+			layout = null;
+			ensure_dom();
+		}
+		const mount = get_pos_mount(pos);
+		if (!mount) return false;
+		if (!menu_layer_attached(pos)) {
+			detach_menu_layer();
+			ensure_dom();
+			$layer = $('<div class="kqs-pos-tools-menu-layer d-none">').appendTo(mount);
+			$layer.append(layout);
+		} else if ($layer?.length && layout?.length && !$.contains($layer[0], layout[0])) {
+			$layer.append(layout);
+		}
+		return Boolean($layer?.length && layout?.length);
 	}
 
 	function ensure_dom() {
@@ -500,12 +690,10 @@ kqs_retail.pos_tools_menu = (function () {
 		}
 		if (is_open()) return;
 		close_other_overlays({ except: "menu" });
-		ensure_dom();
 		active_pos = pos;
-
-		if (!$layer) {
-			$layer = $('<div class="kqs-pos-tools-menu-layer d-none">').appendTo(mount);
-			$layer.append(layout);
+		if (!ensure_layout_in_layer(pos)) {
+			frappe.msgprint(__("Menu could not load. Reload the page and try again."));
+			return;
 		}
 
 		if (pos.recent_order_list?.$component?.is(":visible")) {
@@ -528,18 +716,16 @@ kqs_retail.pos_tools_menu = (function () {
 	}
 
 	function close(opts = {}) {
-		if (!active_pos) return;
+		if (!active_pos) {
+			reset_dom({ restore_components: opts.restore_components !== false });
+			return;
+		}
 		const pos = active_pos;
 		const restore_pos = opts.restore_pos !== false;
 		$layer?.addClass("d-none");
-		$(window).off("resize.kqsToolsMenu");
-		hub_mount?.removeClass("kqs-tools-menu-mount-host");
-		hub_mount = null;
-		hub_scroll_root?.removeClass("kqs-tools-menu-mount");
-		clear_layout_styles();
-		hub_scroll_root = null;
+		detach_menu_layer();
 		if (restore_pos) {
-			pos.$components_wrapper.show();
+			pos.$components_wrapper?.show?.();
 			pos.page.set_title(__("Point of Sale"));
 			pos.page.set_primary_action(__("New Invoice"), () => pos.new_invoice_event());
 			pos.page.set_secondary_action(__("Recent Orders"), () => pos.toggle_recent_order());
@@ -552,11 +738,22 @@ kqs_retail.pos_tools_menu = (function () {
 		return Boolean(active_pos && $layer && !$layer.hasClass("d-none"));
 	}
 
-	function ensure_header_button(pos) {
-		if (!pos?.page) return;
+	function ensure_header_button(pos, attempt = 0) {
+		if (!pos?.page) {
+			if (attempt < 10) {
+				setTimeout(() => ensure_header_button(pos, attempt + 1), 80 + attempt * 80);
+			}
+			return;
+		}
 		inject_styles();
 		const $actions = pos.page.wrapper?.find(".page-actions");
-		if (!$actions?.length || $actions.find(".kqs-pos-tools-header-btn").length) return;
+		if (!$actions?.length) {
+			if (attempt < 10) {
+				setTimeout(() => ensure_header_button(pos, attempt + 1), 80 + attempt * 80);
+			}
+			return;
+		}
+		if ($actions.find(".kqs-pos-tools-header-btn").length) return;
 
 		const label = __("Menu");
 		const $btn = $(`
@@ -580,5 +777,5 @@ kqs_retail.pos_tools_menu = (function () {
 		}
 	}
 
-	return { open, close, is_open, ensure_header_button, close_other_overlays };
+	return { open, close, is_open, ensure_header_button, close_other_overlays, reset_dom };
 })();

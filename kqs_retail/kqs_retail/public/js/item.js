@@ -16,8 +16,12 @@ frappe.provide("kqs_retail.item");
 		if (msg.deleted_count) {
 			parts.push(__("{0} deleted", [msg.deleted_count]));
 		}
-		if (msg.disabled_count) {
-			parts.push(__("{0} disabled (linked to sales/stock history)", [msg.disabled_count]));
+		if (msg.archived_count || msg.disabled_count) {
+			parts.push(
+				__("{0} archived (history kept; SKU free to recreate)", [
+					msg.archived_count || msg.disabled_count,
+				])
+			);
 		}
 		if (msg.failed_count) {
 			parts.push(__("{0} could not be removed", [msg.failed_count]));
@@ -31,13 +35,21 @@ frappe.provide("kqs_retail.item");
 			message: parts.join(". "),
 			indicator: msg.failed_count ? "orange" : "green",
 		});
-		if (msg.failed && msg.failed.length) {
+
+		const detail_rows = []
+			.concat(msg.archived || msg.disabled || [])
+			.concat(msg.failed || []);
+		if (detail_rows.length) {
 			frappe.msgprint({
-				title: __("Some items could not be deleted"),
-				message: msg.failed
-					.map((row) => `${frappe.utils.escape_html(row.item_code)}: ${frappe.utils.escape_html(row.message)}`)
+				title: __("Delete result"),
+				message: detail_rows
+					.map((row) => {
+						const code = frappe.utils.escape_html(row.item_code || "");
+						const note = frappe.utils.escape_html(row.message || row.archived_as || "");
+						return `${code}: ${note}`;
+					})
 					.join("<br>"),
-				indicator: "red",
+				indicator: msg.failed_count ? "orange" : "blue",
 			});
 		}
 		if (ondone) ondone(msg);
@@ -55,7 +67,13 @@ frappe.provide("kqs_retail.item");
 		}
 		frappe.confirm(
 			__(
-				"Delete {0} item(s)?<br><br>{1}<br><br>Variant templates remove all their variants. Items linked to transactions are disabled instead of deleted.",
+				"Delete {0} item(s) from the <b>entire catalog</b> (all branches)?<br><br>{1}<br><br>"
+				"This zeros stock at every warehouse and removes the SKU from POS everywhere. "
+				"If the item has sales history it is archived as DEL-… so you can recreate the same "
+				"style with <b>empty</b> stock — it does not hide-and-resurface old quantities. "
+				"Submitted invoices are not cancelled.<br><br>"
+				"To clear stock at one store only, use <b>Edit Product → Remove from branch</b> "
+				"(transfers sellable qty back to Central).",
 				[codes.length, preview]
 			),
 			() => {
@@ -63,6 +81,7 @@ frappe.provide("kqs_retail.item");
 					method: API,
 					args: { item_codes: JSON.stringify(codes) },
 					freeze: true,
+					freeze_message: __("Deleting products and clearing stock…"),
 					callback(r) {
 						if (r.exc) return;
 						show_delete_result(r.message || {}, ondone);

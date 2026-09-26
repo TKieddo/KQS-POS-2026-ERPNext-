@@ -18,9 +18,16 @@ from kqs_retail.utils.store_credit import is_walk_in_customer, is_store_credit_m
 
 
 def is_real_money_mode(mode_of_payment: str | None) -> bool:
+	"""Cash/card/mobile — excludes store credit, On Account, and Layby Settlement."""
 	if not mode_of_payment:
 		return False
-	return not is_store_credit_mode(mode_of_payment) and not is_account_sale_mode(mode_of_payment)
+	from kqs_retail.utils.layby_settlement import is_layby_settlement_mode
+
+	return (
+		not is_store_credit_mode(mode_of_payment)
+		and not is_account_sale_mode(mode_of_payment)
+		and not is_layby_settlement_mode(mode_of_payment)
+	)
 
 
 def _parse_payment_lines(payments: str | list) -> list[dict]:

@@ -26,8 +26,15 @@ from kqs_retail.utils.warehouses import (
 def kqs_warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 	"""Warehouse link query — KQS Central + store branches only."""
 	company = get_default_company()
-	names = get_kqs_warehouse_names(company)
+	names = list(get_kqs_warehouse_names(company) or [])
 	if not names or not company:
+		return []
+	filters = filters or {}
+	if cint(filters.get("exclude_central")):
+		central = get_kqs_central_warehouse(company)
+		if central:
+			names = [n for n in names if n != central]
+	if not names:
 		return []
 	return frappe.db.sql(
 		"""
@@ -123,6 +130,212 @@ def assign_stock_to_branch(
 	se.insert(ignore_permissions=True)
 	se.submit()
 	return {"stock_entry": se.name, "source_warehouse": source, "target_warehouse": target_warehouse}
+
+
+def _expand_item_codes(codes: list[str], *, expand_templates: bool = True) -> set[str]:
+	expanded: set[str] = set()
+	for raw in codes:
+		code = cstr(raw or "").strip()
+		if not code or not frappe.db.exists("Item", code):
+			continue
+		expanded.add(code)
+		if expand_templates and frappe.db.get_value("Item", code, "has_variants"):
+			for variant in frappe.get_all("Item", filters={"variant_of": code}, pluck="name"):
+				expanded.add(variant)
+	return expanded
+
+
+def _assert_branch_warehouse(source_warehouse: str, company: str) -> str:
+	if not source_warehouse:
+		frappe.throw(_("Branch warehouse is required."))
+	company = company or frappe.db.get_value("Warehouse", source_warehouse, "company") or get_default_company()
+	central = get_kqs_central_warehouse(company)
+	if central and source_warehouse == central:
+		frappe.throw(_("Choose a branch warehouse, not Central."))
+	if not is_kqs_store_warehouse(source_warehouse, company):
+		frappe.throw(_("Source must be a KQS store warehouse."))
+	return company
+
+
+@frappe.whitelist()
+def get_branch_stock_lines(item_code: str, warehouse: str):
+	"""Variants (or standalone) with on-hand / sellable at one warehouse — for Remove-from-branch UI."""
+	assert_stock_manager()
+	item_code = cstr(item_code or "").strip()
+	warehouse = cstr(warehouse or "").strip()
+	if not item_code or not warehouse:
+		frappe.throw(_("Product and branch warehouse are required."))
+	_assert_branch_warehouse(warehouse, "")
+
+	template = resolve_template_code(item_code)
+	codes = _expand_item_codes([template or item_code], expand_templates=True)
+	lines = []
+	for code in sorted(codes):
+		if frappe.db.get_value("Item", code, "has_variants"):
+			continue
+		on_hand = flt(frappe.db.get_value("Bin", {"item_code": code, "warehouse": warehouse}, "actual_qty"))
+		sellable = _available_qty(code, warehouse)
+		if on_hand <= 0 and sellable <= 0:
+			continue
+		attrs = get_variant_attributes(code)
+		attr_label = ", ".join(f"{k}: {v}" for k, v in attrs.items()) if attrs else ""
+		row = frappe.db.get_value(
+			"Item", code, ["item_name", "item_code", "variant_of"], as_dict=True
+		) or {}
+		lines.append(
+			{
+				"item_code": code,
+				"sku": row.get("item_code") or code,
+				"item_name": row.get("item_name") or code,
+				"attributes": attr_label,
+				"on_hand": on_hand,
+				"sellable_qty": sellable,
+				"reserved_qty": flt(on_hand - sellable) if on_hand > sellable else 0,
+			}
+		)
+	return {"warehouse": warehouse, "template": template or item_code, "lines": lines}
+
+
+@frappe.whitelist()
+def discard_branch_stock(
+	source_warehouse: str,
+	item_codes: str | None = None,
+	company: str = "",
+	expand_templates: int = 0,
+):
+	"""Zero sellable stock at one branch only (Stock Reconciliation). Other warehouses unchanged.
+
+	Active layby reserved qty is kept at the branch. Catalog Item is not deleted.
+	"""
+	assert_stock_manager()
+	company = _assert_branch_warehouse(source_warehouse, company)
+
+	codes = json.loads(item_codes) if isinstance(item_codes, str) else item_codes
+	codes = [cstr(c).strip() for c in (codes or []) if cstr(c).strip()]
+	expanded = _expand_item_codes(codes, expand_templates=bool(cint(expand_templates)))
+	if not expanded:
+		frappe.throw(_("Select at least one product or variant."))
+
+	rows = []
+	for item_code in sorted(expanded):
+		if frappe.db.get_value("Item", item_code, "has_variants"):
+			continue
+		on_hand = flt(
+			frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": source_warehouse}, "actual_qty")
+		)
+		if on_hand <= 0:
+			continue
+		sellable = _available_qty(item_code, source_warehouse)
+		# Keep reserved (layby) qty; discard only sellable.
+		keep_qty = flt(on_hand - sellable) if sellable > 0 else on_hand
+		if sellable <= 0:
+			continue
+		if abs(keep_qty - on_hand) < 0.0001:
+			continue
+		rate = (
+			flt(frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": source_warehouse}, "valuation_rate"))
+			or flt(frappe.db.get_value("Item", item_code, "valuation_rate"))
+			or flt(frappe.db.get_value("Item", item_code, "standard_rate"))
+			or 1.0
+		)
+		rows.append(
+			{
+				"item_code": item_code,
+				"warehouse": source_warehouse,
+				"qty": max(keep_qty, 0),
+				"valuation_rate": rate,
+			}
+		)
+
+	if not rows:
+		frappe.throw(
+			_("No discardable (sellable) stock at {0} for the selected variants.").format(source_warehouse)
+		)
+
+	sr = frappe.get_doc(
+		{
+			"doctype": "Stock Reconciliation",
+			"company": company,
+			"purpose": "Stock Reconciliation",
+			"items": rows,
+		}
+	)
+	sr.insert(ignore_permissions=True)
+	sr.submit()
+	return {
+		"stock_reconciliation": sr.name,
+		"source_warehouse": source_warehouse,
+		"action": "discard",
+		"lines": len(rows),
+	}
+
+
+@frappe.whitelist()
+def return_branch_stock_to_central(
+	source_warehouse: str,
+	item_codes: str | None = None,
+	company: str = "",
+	expand_templates: int = 0,
+):
+	"""Optional: move sellable stock from one branch back to Central (keeps inventory value)."""
+	assert_stock_manager()
+	company = _assert_branch_warehouse(source_warehouse, company)
+	central = get_kqs_central_warehouse(company)
+	if not central:
+		frappe.throw(_("Central warehouse is not configured."))
+
+	codes = json.loads(item_codes) if isinstance(item_codes, str) else item_codes
+	codes = [cstr(c).strip() for c in (codes or []) if cstr(c).strip()]
+	expanded = _expand_item_codes(codes, expand_templates=bool(cint(expand_templates)))
+	if not expanded:
+		frappe.throw(_("Select at least one product or variant."))
+
+	stock_items = []
+	for item_code in sorted(expanded):
+		if frappe.db.get_value("Item", item_code, "has_variants"):
+			continue
+		on_hand = flt(
+			frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": source_warehouse}, "actual_qty")
+		)
+		if on_hand <= 0:
+			continue
+		available = _available_qty(item_code, source_warehouse)
+		qty = min(on_hand, available) if available > 0 else 0
+		if qty <= 0:
+			continue
+		ensure_variant_not_orphaned(item_code)
+		stock_items.append(
+			{
+				"item_code": item_code,
+				"qty": qty,
+				"s_warehouse": source_warehouse,
+				"t_warehouse": central,
+			}
+		)
+
+	if not stock_items:
+		frappe.throw(
+			_("No transferable (sellable) stock at {0} for the selected products.").format(source_warehouse)
+		)
+
+	se = frappe.get_doc(
+		{
+			"doctype": "Stock Entry",
+			"stock_entry_type": "Material Transfer",
+			"company": company,
+			"posting_date": today(),
+			"items": stock_items,
+		}
+	)
+	se.insert(ignore_permissions=True)
+	se.submit()
+	return {
+		"stock_entry": se.name,
+		"source_warehouse": source_warehouse,
+		"target_warehouse": central,
+		"action": "transfer",
+		"lines": len(stock_items),
+	}
 
 
 @frappe.whitelist()

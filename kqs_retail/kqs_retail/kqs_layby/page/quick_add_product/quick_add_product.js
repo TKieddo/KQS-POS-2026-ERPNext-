@@ -27,6 +27,7 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 					"Create catalog items with variants. Opening stock is received into the selected warehouse; use Assign to Branch to move stock to stores later."
 				),
 			},
+			{ fieldname: "bulk_import_banner", fieldtype: "HTML" },
 			{ fieldname: "item_name", fieldtype: "Data", label: __("Product Name"), reqd: 1 },
 			{
 				fieldname: "style_code",
@@ -122,6 +123,27 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 	mount_product_header_layout();
 	$(page.body).css({ paddingTop: "1.5rem", paddingBottom: "1rem" });
 	form.wrapper.css("padding-bottom", "3rem");
+
+	(function render_bulk_import_banner() {
+		const field = form.get_field("bulk_import_banner");
+		if (!field) return;
+		field.$wrapper.html(`
+			<div class="kqs-bulk-import-banner mb-3" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 14px;border:1px solid var(--border-color,#d1d8dd);border-radius:6px;background:var(--subtle-fg,#f8f8f8);">
+				<div style="flex:1;min-width:200px;">
+					<strong>${__("Need to add many products?")}</strong>
+					<div class="text-muted small">${__(
+						"Upload a CSV or scan a stock page — review as a draft, then approve."
+					)}</div>
+				</div>
+				<button type="button" class="btn btn-primary btn-sm kqs-open-bulk-import">${__(
+					"Bulk Stock Import"
+				)}</button>
+			</div>
+		`);
+		field.$wrapper.find(".kqs-open-bulk-import").on("click", () => {
+			frappe.set_route("bulk-stock-import");
+		});
+	})();
 
 	function prevent_accidental_form_submit() {
 		// Enter in a field must not trigger the page Save Product action.
@@ -1559,13 +1581,19 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 		}
 		page.set_primary_action(__("Save Product"), save_product);
 		if (page.set_secondary_action) {
-			page.set_secondary_action(__("Assign to Branch"), () => {
+			page.set_secondary_action(__("Bulk Stock Import"), () => {
+				frappe.set_route("bulk-stock-import");
+			});
+		}
+		if (page.add_inner_button) {
+			page.add_inner_button(__("Assign to Branch"), () => {
 				frappe.set_route("assign-to-branch");
 			});
 		}
 		if (page.add_menu_item) {
 			page.add_menu_item(__("Edit Product"), () => frappe.set_route("edit-product"));
 			page.add_menu_item(__("Receive Stock"), () => frappe.set_route("receive-stock"));
+			page.add_menu_item(__("Assign to Branch"), () => frappe.set_route("assign-to-branch"));
 			page.add_menu_item(__("Manage Item Groups"), () => frappe.set_route("Tree", "Item Group"));
 			page.add_menu_item(__("Clear form"), () => {
 				frappe.confirm(__("Clear all fields on this form?"), clear_product_form);

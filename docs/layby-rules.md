@@ -87,9 +87,19 @@ Completed laybys (customer collected goods) use **Returns & Store Credit** — n
 
 1. Final payment recorded on **Layby Payment**
 2. Balance must be **zero**
-3. System creates **Sales Invoice** (POS) linked to agreement
+3. System creates **Sales Invoice** (POS) linked to agreement, paid with **Layby Settlement** (not Cash)
 4. Stock reservation **released**; invoice consumes stock
 5. Customer receives goods / receipt
+
+### Cashup / till tender (critical)
+
+| Money event | Counts in that day's cashup? |
+|-------------|------------------------------|
+| Layby Payment (deposit / installment / final) created during the open session | **Yes** — by mode of payment |
+| Completion Sales Invoice (Layby Settlement) | **No** — not drawer cash; already collected via Layby Payments |
+| Prior days' deposits | **No** — only payments with `creation` in this opening→closing window |
+
+Example: product 800, deposit 500 (day 1), final 300 (day N) → day N expected += **300** only.
 
 ## POS behaviour
 
@@ -112,3 +122,4 @@ Completed laybys (customer collected goods) use **Returns & Store Credit** — n
 
 - **v1.0** — 2026-06-26 — initial rules for `kqs_retail` implementation
 - **v1.1** — 2026-07-06 — Phase B: till cancel/amend/forfeit + layby reports
+- **v1.2** — 2026-09-25 — Cashup tender: completion SI uses Layby Settlement; only session Layby Payments count as drawer cash

@@ -16,6 +16,25 @@ _PRINT_FORMAT_FIELDS = (
 
 def ensure_kqs_retail_settings() -> None:
 	"""Hook: create the KQS Retail Settings single with defaults after migrate."""
+	# Always re-import DocType JSON so new sections (e.g. Bulk Import AI) appear after pull.
+	try:
+		from pathlib import Path
+
+		from frappe.modules.import_file import import_file_by_path
+
+		json_path = (
+			Path(frappe.get_app_path("kqs_retail"))
+			/ "kqs_layby"
+			/ "doctype"
+			/ "kqs_retail_settings"
+			/ "kqs_retail_settings.json"
+		)
+		if json_path.is_file():
+			import_file_by_path(str(json_path), force=True)
+			frappe.clear_cache(doctype="KQS Retail Settings")
+	except Exception:
+		frappe.log_error(title="KQS Retail Settings DocType sync")
+
 	if not frappe.db.exists("DocType", "KQS Retail Settings"):
 		return
 

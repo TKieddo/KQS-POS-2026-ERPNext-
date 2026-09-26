@@ -78,6 +78,19 @@ frappe.provide("kqs_retail.silent_print");
 		}
 		.kqs-muted-line { font-size: 9pt !important; }
 		.kqs-policy { font-size: 8.5pt !important; line-height: 1.35 !important; }
+		.kqs-cashup-title {
+			font-size: 9.5pt !important;
+			font-weight: 800 !important;
+			letter-spacing: 0.06em !important;
+		}
+		.kqs-cashup-slip .kqs-grand {
+			font-size: 10.5pt !important;
+			font-weight: 800 !important;
+		}
+		.kqs-cashup-head, .kqs-cashup-row {
+			font-size: 8.5pt !important;
+			font-weight: 800 !important;
+		}
 		.kqs-cols-head, .kqs-cols-row {
 			grid-template-columns: 6mm minmax(0, 1fr) 20mm !important;
 			width: 100% !important;
@@ -441,6 +454,50 @@ frappe.provide("kqs_retail.silent_print");
 		return job;
 	}
 
+	/**
+	 * Kick the cash drawer via ESC/POS (no receipt). Printer must have the
+	 * drawer on pin 2 or pin 5 — both pulses are sent.
+	 */
+	async function open_drawer_via_qz() {
+		if (!is_qz_enabled()) {
+			throw new Error("Silent print is off");
+		}
+		if (!frappe.ui?.form?.qz_init) {
+			throw new Error("QZ helpers not available");
+		}
+		const signing_ok = await ensure_qz_security();
+		const using_signing = await qz_connect_quiet(signing_ok);
+		if (typeof qz === "undefined" || !qz.print || !qz.configs?.create) {
+			throw new Error("QZ Tray API not ready");
+		}
+		if (!using_signing) {
+			hint_remember_allow();
+		}
+		const printer = await resolve_qz_printer();
+		const config = qz.configs.create(printer || null, {
+			encoding: "ISO-8859-1",
+		});
+		const data = [
+			{ type: "raw", format: "command", flavor: "hex", data: "1B700019FA" },
+			{ type: "raw", format: "command", flavor: "hex", data: "1B700119FA" },
+		];
+		await qz.print(config, data);
+		if (printer) {
+			remember_printer(printer);
+		}
+	}
+
+	function kqs_open_drawer() {
+		const job = print_queue.then(async () => {
+			await open_drawer_via_qz();
+			return "qz";
+		});
+		print_queue = job.catch(() => {});
+		return job;
+	}
+
 	kqs_retail.silent_print.print = kqs_print;
+	kqs_retail.silent_print.open_drawer = kqs_open_drawer;
 	window.kqs_print = kqs_print;
+	window.kqs_open_drawer = kqs_open_drawer;
 })();

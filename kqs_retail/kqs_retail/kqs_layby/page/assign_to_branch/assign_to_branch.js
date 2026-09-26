@@ -15,6 +15,10 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 	let active_product = "";
 	let transfer_lines = [];
 	let qty_by_code = {};
+	let suppress_product_onchange = false;
+	let suppress_source_onchange = false;
+	let transfer_lines_seq = 0;
+	let last_source_warehouse = "";
 
 	function format_float(value) {
 		return frappe.format(value, { fieldtype: "Float", precision: 2 });
@@ -34,8 +38,28 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 		return file_url;
 	}
 
-	function select_single_product(code) {
-		selected_products.clear();
+	function encode_item_code(code) {
+		// Preserve hyphens, plus signs, etc. in HTML data attributes.
+		return encodeURIComponent(cstr_code(code));
+	}
+
+	function cstr_code(code) {
+		return String(code == null ? "" : code).trim();
+	}
+
+	function read_item_code($el) {
+		const raw = $el.attr("data-code");
+		if (raw == null || raw === "") return "";
+		try {
+			return decodeURIComponent(String(raw));
+		} catch (e) {
+			return String(raw);
+		}
+	}
+
+	function focus_product(code) {
+		/** Highlight / scroll only — never wipe multi-select or typed qtys. */
+		code = cstr_code(code);
 		active_product = code || "";
 		if (code) selected_products.add(code);
 		render_catalog();
@@ -49,8 +73,11 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 	}
 
 	function toggle_product_selection(code, checked) {
-		if (checked) selected_products.add(code);
-		else {
+		code = cstr_code(code);
+		if (checked) {
+			selected_products.add(code);
+			active_product = code;
+		} else {
 			selected_products.delete(code);
 			if (active_product === code) active_product = "";
 		}
@@ -76,7 +103,10 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 				get_query() {
 					return { query: "kqs_retail.api.stock_transfer.kqs_warehouse_query" };
 				},
-				onchange: () => on_source_change(),
+				onchange: () => {
+					if (suppress_source_onchange) return;
+					on_source_change();
+				},
 			},
 			{ fieldtype: "Column Break" },
 			{
@@ -159,7 +189,7 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 					? `<span class="indicator-pill gray">${__("Has variants")}</span>`
 					: "";
 				const style = row.style_code || row.item_code;
-				return `<tr class="kqs-catalog-row ${active}" data-code="${frappe.utils.escape_html(row.item_code)}">
+				return `<tr class="kqs-catalog-row ${active}" data-code="${encode_item_code(row.item_code)}">
 					<td style="width:36px;">
 						<input type="checkbox" class="kqs-catalog-check" ${checked} />
 					</td>
@@ -206,7 +236,7 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 						? "kqs-catalog-active"
 						: "";
 				const style = row.style_code || row.item_code;
-				return `<div class="kqs-catalog-card ${active}" data-code="${frappe.utils.escape_html(row.item_code)}">
+				return `<div class="kqs-catalog-card ${active}" data-code="${encode_item_code(row.item_code)}">
 					<label class="kqs-catalog-card-inner">
 						<input type="checkbox" class="kqs-catalog-check" ${checked} />
 						<img src="${item_image_url(row.image)}" alt="" class="kqs-catalog-card-img" />
@@ -280,16 +310,27 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 
 		$root.find(".kqs-catalog-check").on("change", function () {
 			const $row = $(this).closest("[data-code]");
-			// Use .attr — jQuery .data() coerces numeric item codes to ints.
-			const code = String($row.attr("data-code") || "");
+			const code = read_item_code($row);
 			toggle_product_selection(code, $(this).is(":checked"));
 		});
 
 		$root.find(".kqs-catalog-row, .kqs-catalog-card").on("click", function (e) {
 			if ($(e.target).is("input, label, a, button")) return;
-			const code = String($(this).attr("data-code") || "");
-			form.set_value("product", code);
-			select_single_product(code);
+			const code = read_item_code($(this));
+			// Avoid Link-field onchange racing and rewriting a hyphenated style.
+			suppress_product_onchange = true;
+			const done = () => {
+				suppress_product_onchange = false;
+			};
+			const set_p = form.set_value("product", code);
+			if (set_p && typeof set_p.finally === "function") {
+				set_p.finally(done);
+			} else if (set_p && typeof set_p.always === "function") {
+				set_p.always(done);
+			} else {
+				setTimeout(done, 0);
+			}
+			focus_product(code);
 		});
 
 		$root.find(".kqs-catalog-load-more").on("click", () => load_catalog(false));
@@ -299,7 +340,7 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 		$grid()
 			.find(".kqs-assign-row")
 			.each(function () {
-				const code = String($(this).attr("data-code") || "");
+				const code = read_item_code($(this));
 				const qty = $(this).find(".kqs-assign-qty").val();
 				if (qty) qty_by_code[code] = qty;
 			});
@@ -342,7 +383,7 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 						const saved_qty = qty_by_code[line.item_code] || "";
 						const max_qty = line.available_qty || 0;
 						const disabled = max_qty <= 0 ? "disabled" : "";
-						return `<tr class="kqs-assign-row" data-code="${frappe.utils.escape_html(line.item_code)}">
+						return `<tr class="kqs-assign-row" data-code="${encode_item_code(line.item_code)}">
 							<td>${attr_label}</td>
 							<td class="text-muted small">${sku}</td>
 							<td class="text-right text-muted">${format_float(line.available_qty)}</td>
@@ -408,11 +449,13 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 	function load_transfer_lines() {
 		const source = form.get_value("source_warehouse");
 		const codes = Array.from(selected_products);
+		capture_qty_values();
 		if (!source || !codes.length) {
 			transfer_lines = [];
 			render_transfer_grid();
 			return;
 		}
+		const seq = ++transfer_lines_seq;
 		frappe.call({
 			method: "kqs_retail.api.stock_transfer.get_bulk_transfer_lines",
 			args: {
@@ -422,25 +465,59 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 			},
 			callback(r) {
 				if (r.exc) return;
+				if (seq !== transfer_lines_seq) return;
 				transfer_lines = (r.message && r.message.lines) || [];
 				render_transfer_grid();
 			},
 		});
 	}
 
-	function on_source_change() {
+	function clear_draft_selection() {
 		selected_products.clear();
 		active_product = "";
 		qty_by_code = {};
 		transfer_lines = [];
 		form.set_value("product", "");
 		catalog_search = "";
-		load_catalog(true);
 		render_transfer_grid();
 	}
 
+	function on_source_change() {
+		const source = form.get_value("source_warehouse") || "";
+		const has_draft =
+			selected_products.size > 0 || Object.keys(qty_by_code).some((k) => qty_by_code[k]);
+		const source_changed =
+			last_source_warehouse && source && source !== last_source_warehouse;
+
+		const finish = () => {
+			last_source_warehouse = source;
+			clear_draft_selection();
+			load_catalog(true);
+		};
+
+		if (source_changed && has_draft) {
+			frappe.confirm(
+				__("Changing source clears selected products and quantities. Continue?"),
+				() => finish(),
+				() => {
+					suppress_source_onchange = true;
+					const p = form.set_value("source_warehouse", last_source_warehouse);
+					const done = () => {
+						suppress_source_onchange = false;
+					};
+					if (p && typeof p.finally === "function") p.finally(done);
+					else if (p && typeof p.always === "function") p.always(done);
+					else setTimeout(done, 0);
+				}
+			);
+			return;
+		}
+		finish();
+	}
+
 	function on_product_filter_change() {
-		const product = form.get_value("product");
+		if (suppress_product_onchange) return;
+		const product = cstr_code(form.get_value("product"));
 		if (!product) {
 			active_product = "";
 			load_catalog(true);
@@ -448,7 +525,7 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 			return;
 		}
 		catalog_search = "";
-		select_single_product(product);
+		focus_product(product);
 		load_catalog(true);
 	}
 
@@ -479,7 +556,7 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 		$grid()
 			.find(".kqs-assign-row")
 			.each(function () {
-				const code = String($(this).attr("data-code") || "");
+				const code = read_item_code($(this));
 				const qty = parseFloat($(this).find(".kqs-assign-qty").val()) || 0;
 				if (qty > 0) items.push({ item_code: code, qty });
 			});
@@ -504,7 +581,9 @@ frappe.pages["assign-to-branch"].on_page_load = function (wrapper) {
 					});
 					qty_by_code = {};
 					selected_products.clear();
+					active_product = "";
 					form.set_value("product", "");
+					last_source_warehouse = "";
 					on_source_change();
 				}
 			},

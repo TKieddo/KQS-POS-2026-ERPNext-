@@ -1,5 +1,5 @@
 /* Copyright (c) 2026, KQS â€” Layby, returns & checkout flow for ERPNext Point of Sale */
-const KQS_POS_PAGE_SCRIPT_VERSION = 60;
+const KQS_POS_PAGE_SCRIPT_VERSION = 68;
 
 frappe.provide("kqs_retail.pos_returns");
 
@@ -4914,9 +4914,107 @@ kqs_retail.pos_tools_menu = (function () {
 		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.47 8.47a.75.75 0 0 1 1.06 0L12 10.94l2.47-2.47a.75.75 0 1 1 1.06 1.06L13.06 12l2.47 2.47a.75.75 0 0 1-1.06 1.06L12 13.06l-2.47 2.47a.75.75 0 0 1-1.06-1.06L10.94 12 8.47 9.53a.75.75 0 0 1 0-1.06z"/><path d="M4.5 4.5A9 9 0 1 1 3 12a9 9 0 0 1 1.5-7.5z" opacity=".18"/></svg>`;
 	}
 
+	function icon_till() {
+		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.75 4h8.5A.75.75 0 0 1 17 4.75V7H7V4.75A.75.75 0 0 1 7.75 4z"/><path d="M4 8h16a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a1 1 0 0 1 1-1zm3 3.25a.75.75 0 0 0 0 1.5h10a.75.75 0 0 0 0-1.5H7zm4 3.5a.75.75 0 0 0 0 1.5h2a.75.75 0 0 0 0-1.5h-2z"/></svg>`;
+	}
+
 	function icon_logout() {
 		return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.5 3.75a.75.75 0 0 1 .75-.75h6A2.25 2.25 0 0 1 19.5 5.25v13.5A2.25 2.25 0 0 1 17.25 21h-6a.75.75 0 0 1 0-1.5h6a.75.75 0 0 0 .75-.75V5.25a.75.75 0 0 0-.75-.75h-6a.75.75 0 0 1-.75-.75z"/><path d="M3.22 11.47a.75.75 0 0 0 0 1.06l3.75 3.75a.75.75 0 1 0 1.06-1.06L5.81 12.75H14a.75.75 0 0 0 0-1.5H5.81l2.22-2.22a.75.75 0 0 0-1.06-1.06l-3.75 3.5z"/></svg>`;
 	}
+
+	function open_till_dialog(pos) {
+		const reason_keys = {
+			"Check change": "change",
+			"Withdraw to buy something": "withdraw",
+			"Count cash": "count",
+			Other: "other",
+		};
+		const d = new frappe.ui.Dialog({
+			title: __("Open till"),
+			fields: [
+				{
+					fieldname: "reason",
+					fieldtype: "Select",
+					label: __("Reason"),
+					reqd: 1,
+					default: "Check change",
+					options: [
+						"Check change",
+						"Withdraw to buy something",
+						"Count cash",
+						"Other",
+					].join("\n"),
+				},
+				{
+					fieldname: "notes",
+					fieldtype: "Small Text",
+					label: __("Notes"),
+					description: __("Required for Other. Optional for the rest."),
+				},
+			],
+			primary_action_label: __("Open till"),
+			primary_action(values) {
+				const reason_label = String(values.reason || "").trim();
+				const reason = reason_keys[reason_label] || "";
+				const notes = String(values.notes || "").trim();
+				if (!reason) {
+					frappe.msgprint(__("Select a reason to open the till."));
+					return;
+				}
+				if (reason === "other" && !notes) {
+					frappe.msgprint(__("Add a short note for Other."));
+					return;
+				}
+				d.disable_primary_action();
+				frappe.call({
+					method: "kqs_retail.api.pos.log_till_open",
+					args: { reason, notes },
+					freeze: true,
+					freeze_message: __("Opening till…"),
+					callback(r) {
+						if (r.exc) {
+							d.enable_primary_action();
+							return;
+						}
+						const kick =
+							window.kqs_open_drawer || kqs_retail.silent_print?.open_drawer;
+						const after = (ok) => {
+							d.hide();
+							kqs_retail.pos_tools_menu.close();
+							if (ok) {
+								frappe.show_alert({
+									message: __("Till opened — no receipt printed."),
+									indicator: "green",
+								});
+							} else {
+								frappe.show_alert(
+									{
+										message: __(
+											"Reason saved. Couldn’t kick the drawer from the printer — use the key if needed."
+										),
+										indicator: "orange",
+									},
+									10
+								);
+							}
+						};
+						if (typeof kick !== "function") {
+							after(false);
+							return;
+						}
+						Promise.resolve(kick())
+							.then(() => after(true))
+							.catch(() => after(false));
+					},
+					error() {
+						d.enable_primary_action();
+					},
+				});
+			},
+		});
+		d.show();
+	}
+
 
 	function confirm_logout(on_confirm) {
 		frappe.confirm(
@@ -5001,10 +5099,25 @@ kqs_retail.pos_tools_menu = (function () {
 				desc: __("Reprint receipts or start a return quickly."),
 				gradient: "linear-gradient(145deg, #DA8FFF 0%, #BF5AF2 100%)",
 				icon: icon_recent(),
+				restore_pos: true,
 				action() {
-					if (typeof pos.toggle_recent_order === "function") {
+					if (typeof kqs_retail?.point_of_sale?.open_recent_orders === "function") {
+						kqs_retail.point_of_sale.open_recent_orders(pos);
+					} else if (typeof pos.toggle_recent_order === "function") {
+						pos.$components_wrapper?.show?.();
 						pos.toggle_recent_order();
 					}
+				},
+			},
+			{
+				id: "open-till",
+				title: __("Open Till"),
+				desc: __("Open the cash drawer without a sale or receipt."),
+				gradient: "linear-gradient(145deg, #A3B1BF 0%, #4A5560 100%)",
+				icon: icon_till(),
+				stay_on_menu: true,
+				action() {
+					open_till_dialog(pos);
 				},
 			},
 			{
@@ -5013,6 +5126,7 @@ kqs_retail.pos_tools_menu = (function () {
 				desc: __("End your session and prepare the closing entry."),
 				gradient: "linear-gradient(145deg, #AEAEB2 0%, #636366 100%)",
 				icon: icon_close(),
+				restore_pos: true,
 				action() {
 					if (typeof pos.close_pos === "function") {
 						pos.close_pos();
@@ -5280,6 +5394,10 @@ kqs_retail.pos_tools_menu = (function () {
 	}
 
 	function render_tiles(pos) {
+		if (!ensure_layout_in_layer(pos)) {
+			frappe.msgprint(__("Menu could not load. Reload the page and try again."));
+			return;
+		}
 		const tiles = get_tiles(pos);
 		const html = tiles
 			.map((tile) => {
@@ -5300,8 +5418,12 @@ kqs_retail.pos_tools_menu = (function () {
 			const tile = tiles.find((row) => row.id === id);
 			if (!tile) return;
 			const target_pos = active_pos;
+			if (tile.stay_on_menu) {
+				tile.action(target_pos);
+				return;
+			}
 			const run = () => {
-				close({ restore_pos: false });
+				close({ restore_pos: tile.restore_pos === true });
 				frappe.after_ajax(() => tile.action(target_pos));
 			};
 			// Confirm first while Menu is still visible — cancel must leave the till usable.
@@ -5311,6 +5433,74 @@ kqs_retail.pos_tools_menu = (function () {
 			}
 			run();
 		});
+	}
+
+	function menu_layer_attached(pos) {
+		if (!$layer?.length) return false;
+		const mount = get_pos_mount(pos);
+		if (!mount?.length) return false;
+		const node = $layer[0];
+		return Boolean(node?.isConnected && mount[0]?.contains(node));
+	}
+
+	function detach_menu_layer() {
+		$(window).off("resize.kqsToolsMenu");
+		hub_mount?.removeClass("kqs-tools-menu-mount-host");
+		hub_scroll_root?.removeClass("kqs-tools-menu-mount");
+		clear_layout_styles();
+		$layer?.remove();
+		$layer = null;
+		layout = null;
+		hub_mount = null;
+		hub_scroll_root = null;
+	}
+
+	function reset_dom(opts = {}) {
+		const restore = opts.restore_components !== false;
+		if (restore && active_pos?.$components_wrapper?.length) {
+			active_pos.$components_wrapper.show();
+			try {
+				if (active_pos.page?.set_title) {
+					active_pos.page.set_title(__("Point of Sale"));
+				}
+				if (typeof active_pos.new_invoice_event === "function") {
+					active_pos.page?.set_primary_action?.(
+						__("New Invoice"),
+						() => active_pos.new_invoice_event()
+					);
+				}
+				if (typeof active_pos.toggle_recent_order === "function") {
+					active_pos.page?.set_secondary_action?.(
+						__("Recent Orders"),
+						() => active_pos.toggle_recent_order()
+					);
+				}
+				active_pos.page?.btn_secondary?.show?.();
+			} catch (e) {
+				/* POS may already be torn down */
+			}
+		}
+		detach_menu_layer();
+		active_pos = null;
+	}
+
+	function ensure_layout_in_layer(pos) {
+		ensure_dom();
+		if (layout?.length && !layout[0]?.isConnected) {
+			layout = null;
+			ensure_dom();
+		}
+		const mount = get_pos_mount(pos);
+		if (!mount) return false;
+		if (!menu_layer_attached(pos)) {
+			detach_menu_layer();
+			ensure_dom();
+			$layer = $('<div class="kqs-pos-tools-menu-layer d-none">').appendTo(mount);
+			$layer.append(layout);
+		} else if ($layer?.length && layout?.length && !$.contains($layer[0], layout[0])) {
+			$layer.append(layout);
+		}
+		return Boolean($layer?.length && layout?.length);
 	}
 
 	function ensure_dom() {
@@ -5370,12 +5560,10 @@ kqs_retail.pos_tools_menu = (function () {
 		}
 		if (is_open()) return;
 		close_other_overlays({ except: "menu" });
-		ensure_dom();
 		active_pos = pos;
-
-		if (!$layer) {
-			$layer = $('<div class="kqs-pos-tools-menu-layer d-none">').appendTo(mount);
-			$layer.append(layout);
+		if (!ensure_layout_in_layer(pos)) {
+			frappe.msgprint(__("Menu could not load. Reload the page and try again."));
+			return;
 		}
 
 		if (pos.recent_order_list?.$component?.is(":visible")) {
@@ -5398,18 +5586,16 @@ kqs_retail.pos_tools_menu = (function () {
 	}
 
 	function close(opts = {}) {
-		if (!active_pos) return;
+		if (!active_pos) {
+			reset_dom({ restore_components: opts.restore_components !== false });
+			return;
+		}
 		const pos = active_pos;
 		const restore_pos = opts.restore_pos !== false;
 		$layer?.addClass("d-none");
-		$(window).off("resize.kqsToolsMenu");
-		hub_mount?.removeClass("kqs-tools-menu-mount-host");
-		hub_mount = null;
-		hub_scroll_root?.removeClass("kqs-tools-menu-mount");
-		clear_layout_styles();
-		hub_scroll_root = null;
+		detach_menu_layer();
 		if (restore_pos) {
-			pos.$components_wrapper.show();
+			pos.$components_wrapper?.show?.();
 			pos.page.set_title(__("Point of Sale"));
 			pos.page.set_primary_action(__("New Invoice"), () => pos.new_invoice_event());
 			pos.page.set_secondary_action(__("Recent Orders"), () => pos.toggle_recent_order());
@@ -5422,11 +5608,22 @@ kqs_retail.pos_tools_menu = (function () {
 		return Boolean(active_pos && $layer && !$layer.hasClass("d-none"));
 	}
 
-	function ensure_header_button(pos) {
-		if (!pos?.page) return;
+	function ensure_header_button(pos, attempt = 0) {
+		if (!pos?.page) {
+			if (attempt < 10) {
+				setTimeout(() => ensure_header_button(pos, attempt + 1), 80 + attempt * 80);
+			}
+			return;
+		}
 		inject_styles();
 		const $actions = pos.page.wrapper?.find(".page-actions");
-		if (!$actions?.length || $actions.find(".kqs-pos-tools-header-btn").length) return;
+		if (!$actions?.length) {
+			if (attempt < 10) {
+				setTimeout(() => ensure_header_button(pos, attempt + 1), 80 + attempt * 80);
+			}
+			return;
+		}
+		if ($actions.find(".kqs-pos-tools-header-btn").length) return;
 
 		const label = __("Menu");
 		const $btn = $(`
@@ -5450,7 +5647,7 @@ kqs_retail.pos_tools_menu = (function () {
 		}
 	}
 
-	return { open, close, is_open, ensure_header_button, close_other_overlays };
+	return { open, close, is_open, ensure_header_button, close_other_overlays, reset_dom };
 })();
 
 
@@ -6535,6 +6732,24 @@ frappe.provide("kqs_retail.point_of_sale");
 		}
 	}
 
+	function open_kqs_recent_orders(pos) {
+		const target = pos || window.cur_pos;
+		if (!target?.$components_wrapper?.length) {
+			frappe.msgprint(__("POS is still starting up. Try again in a moment."));
+			return;
+		}
+		if (typeof target.toggle_recent_order !== "function") {
+			frappe.msgprint(__("Recent Orders is not available yet. Reload the page and try again."));
+			return;
+		}
+		target.$components_wrapper.show();
+		if (target.recent_order_list?.$component?.is(":hidden")) {
+			target.toggle_recent_order();
+		} else if (typeof target.toggle_recent_order_list === "function") {
+			target.toggle_recent_order_list(true);
+		}
+	}
+
 	function bind_kqs_return_button(order_summary) {
 		if (!order_summary?.$summary_container) return;
 		order_summary.$summary_container.off("click", ".return-btn");
@@ -6589,6 +6804,19 @@ frappe.provide("kqs_retail.point_of_sale");
 			open_kqs_print_view(doc.doctype, doc.name, print_format, letterhead);
 		};
 		PastOrderSummary.prototype._kqs_silent_print_patched = true;
+	}
+
+	function patch_past_order_list_defaults() {
+		if (!window.erpnext?.PointOfSale?.PastOrderList) return;
+		const PastOrderList = erpnext.PointOfSale.PastOrderList;
+		if (PastOrderList.prototype._kqs_paid_default_patched) return;
+
+		const orig_make_filter_section = PastOrderList.prototype.make_filter_section;
+		PastOrderList.prototype.make_filter_section = function () {
+			orig_make_filter_section.call(this);
+			this.status_field?.set_value?.("Paid");
+		};
+		PastOrderList.prototype._kqs_paid_default_patched = true;
 	}
 
 	function ensure_kqs_pos_instance_patches(pos) {
@@ -6854,6 +7082,9 @@ frappe.provide("kqs_retail.point_of_sale");
 				return cur_pos_value;
 			},
 			set(value) {
+				if (value !== cur_pos_value && typeof kqs_retail?.pos_tools_menu?.reset_dom === "function") {
+					kqs_retail.pos_tools_menu.reset_dom();
+				}
 				cur_pos_value = value;
 				if (value) {
 					ensure_pos_manual_payment(value);
@@ -8306,6 +8537,7 @@ frappe.provide("kqs_retail.point_of_sale");
 	kqs_retail.point_of_sale.open_layby_hub = open_kqs_layby_hub;
 	kqs_retail.point_of_sale.open_customer_account = open_kqs_customer_account;
 	kqs_retail.point_of_sale.open_returns = open_kqs_pos_returns;
+	kqs_retail.point_of_sale.open_recent_orders = open_kqs_recent_orders;
 	kqs_retail.point_of_sale.open_tools_menu = open_kqs_tools_menu;
 
 	function inject_cart_layby_styles() {
@@ -9112,6 +9344,7 @@ frappe.provide("kqs_retail.point_of_sale");
 			frappe.msgprint(__("No open POS session found."));
 			return;
 		}
+		clear_pos_branch_session();
 		try {
 			if (window.kqs_offline?.assert_can_close) {
 				await window.kqs_offline.assert_can_close();
@@ -9156,6 +9389,43 @@ frappe.provide("kqs_retail.point_of_sale");
 		});
 	}
 
+	const KQS_POS_BRANCH_SESSION_KEY = "kqs_pos_branch_session";
+
+	function read_pos_branch_session() {
+		try {
+			const raw = sessionStorage.getItem(KQS_POS_BRANCH_SESSION_KEY);
+			if (!raw) return null;
+			const data = JSON.parse(raw);
+			if (data?.pos_profile) return data;
+		} catch (e) {
+			/* ignore */
+		}
+		return null;
+	}
+
+	function save_pos_branch_session(opening) {
+		if (!opening?.pos_profile) return;
+		try {
+			sessionStorage.setItem(
+				KQS_POS_BRANCH_SESSION_KEY,
+				JSON.stringify({
+					pos_profile: opening.pos_profile,
+					opening: opening.name || "",
+				})
+			);
+		} catch (e) {
+			/* ignore */
+		}
+	}
+
+	function clear_pos_branch_session() {
+		try {
+			sessionStorage.removeItem(KQS_POS_BRANCH_SESSION_KEY);
+		} catch (e) {
+			/* ignore */
+		}
+	}
+
 	function show_till_blocked_dialog(data) {
 		const opening = data.opening || {};
 		const who = opening.user || __("another user");
@@ -9187,28 +9457,218 @@ frappe.provide("kqs_retail.point_of_sale");
 		d.show();
 	}
 
+	function leave_empty_pos_page() {
+		try {
+			frappe.set_route("");
+		} catch (e) {
+			window.location.replace("/app");
+		}
+	}
+
+	function resume_pos_opening(controller, opening, joined) {
+		const profile = opening?.pos_profile || "";
+		save_pos_branch_session(opening);
+		frappe.show_alert(
+			{
+				message: joined
+					? __("Opening {0}…", [profile])
+					: __("Resuming your open till…"),
+				indicator: "blue",
+			},
+			3
+		);
+		controller.prepare_app_defaults(opening);
+		setTimeout(() => kqs_init_offline_cache(controller), 0);
+		setTimeout(() => {
+			try {
+				frappe.dom.unfreeze();
+			} catch (e) {
+				/* ignore */
+			}
+		}, 400);
+	}
+
+	function branch_status_html(branch) {
+		if (!branch) {
+			return `<p class="text-muted">${__("Pick a branch to continue.")}</p>`;
+		}
+		const opening = branch.opening;
+		if (!opening) {
+			return `<p>${__("This till is closed. You will open your own session.")}</p>`;
+		}
+		const who = frappe.utils.escape_html(opening.user || __("another user"));
+		const profile = frappe.utils.escape_html(branch.pos_profile || "");
+		if (opening.outdated) {
+			return `<p>${__(
+				"{0} was opened yesterday by {1}. Close that session before using this branch.",
+				[profile, who]
+			)}</p>`;
+		}
+		if (opening.user === frappe.session.user) {
+			return `<p>${__("{0} is already open on your account. You will land in that till.", [
+				profile,
+			])}</p>`;
+		}
+		return `<p>${__("{0} is already open by {1}. You will join that till — no need to close it.", [
+			profile,
+			who,
+		])}</p>`;
+	}
+
+	function apply_opening_dialog_profile(controller) {
+		const dlg = cur_dialog;
+		if (!dlg?.fields_dict?.pos_profile) return;
+		const names = controller._kqs_branch_names;
+		dlg.fields_dict.pos_profile.get_query = () => {
+			const filters = { disabled: 0 };
+			if (names?.length) {
+				filters.name = ["in", names];
+			}
+			const company = dlg.get_value("company");
+			if (company) {
+				filters.company = company;
+			}
+			return { filters, ignore_user_permissions: 1 };
+		};
+		const profile =
+			controller._kqs_chosen_pos_profile || controller._kqs_default_pos_profile;
+		if (profile) {
+			dlg.set_value("pos_profile", profile);
+		}
+	}
+
+	function start_create_opening(controller, pos_profile) {
+		controller._kqs_skip_opening_resolve = true;
+		if (pos_profile) {
+			controller._kqs_chosen_pos_profile = pos_profile;
+			controller._kqs_default_pos_profile = pos_profile;
+			save_pos_branch_session({ pos_profile });
+		}
+		controller.create_opening_voucher();
+	}
+
+	function open_selected_branch(controller, data, pos_profile) {
+		const branches = data.branches || [];
+		const branch = branches.find((row) => row.pos_profile === pos_profile);
+		if (!branch) {
+			frappe.msgprint(__("Select a branch."));
+			return;
+		}
+		const opening = branch.opening;
+		if (opening?.outdated) {
+			if (data.can_close && opening.name) {
+				prepare_closing_and_route(opening.name);
+			} else {
+				show_till_blocked_dialog({ opening, can_close: data.can_close });
+			}
+			return;
+		}
+		if (opening) {
+			if (data.can_join || opening.user === frappe.session.user) {
+				resume_pos_opening(
+					controller,
+					opening,
+					opening.user && opening.user !== frappe.session.user
+				);
+				return;
+			}
+			show_till_blocked_dialog({ opening, can_close: data.can_close });
+			return;
+		}
+		start_create_opening(controller, branch.pos_profile);
+	}
+
+	function show_branch_pick_dialog(controller, data) {
+		const branches = data.branches || [];
+		if (!branches.length) {
+			start_create_opening(controller, null);
+			return;
+		}
+		if (branches.length === 1 && !data.can_join) {
+			open_selected_branch(controller, data, branches[0].pos_profile);
+			return;
+		}
+		if (window._kqs_branch_picker_open) {
+			return;
+		}
+		window._kqs_branch_picker_open = true;
+		const by_name = Object.create(null);
+		branches.forEach((row) => {
+			by_name[row.pos_profile] = row;
+		});
+		const saved_profile = read_pos_branch_session()?.pos_profile || "";
+		const d = new frappe.ui.Dialog({
+			title: __("Choose branch"),
+			static: true,
+			fields: [
+				{
+					fieldtype: "Link",
+					options: "POS Profile",
+					fieldname: "pos_profile",
+					label: __("Branch"),
+					reqd: 1,
+					default: saved_profile || undefined,
+					ignore_user_permissions: 1,
+					get_query: () => ({
+						filters: {
+							disabled: 0,
+							name: ["in", branches.map((row) => row.pos_profile)],
+						},
+						ignore_user_permissions: 1,
+					}),
+					onchange() {
+						const name = d.get_value("pos_profile");
+						d.fields_dict.branch_status.$wrapper.html(
+							branch_status_html(by_name[name])
+						);
+					},
+				},
+				{
+					fieldtype: "HTML",
+					fieldname: "branch_status",
+					options: branch_status_html(null),
+				},
+			],
+			primary_action_label: __("Open till"),
+			primary_action(values) {
+				const profile = values?.pos_profile;
+				if (!profile) {
+					frappe.msgprint(__("Select a branch."));
+					return;
+				}
+				window._kqs_branch_picker_open = false;
+				d.hide();
+				open_selected_branch(controller, data, profile);
+			},
+		});
+		d.set_secondary_action_label(__("Cancel"));
+		d.set_secondary_action(() => {
+			window._kqs_branch_picker_open = false;
+			d.hide();
+			leave_empty_pos_page();
+		});
+		d.onhide = () => {
+			window._kqs_branch_picker_open = false;
+		};
+		d.show();
+		if (saved_profile && by_name[saved_profile]) {
+			d.fields_dict.branch_status.$wrapper.html(branch_status_html(by_name[saved_profile]));
+		}
+	}
+
 	function apply_opening_resolve_result(controller, data) {
 		const me = controller;
 		data = data || {};
+		me._kqs_can_join = Boolean(data.can_join);
+		me._kqs_can_close = Boolean(data.can_close);
+		if (data.branches?.length) {
+			me._kqs_branch_names = data.branches.map((row) => row.pos_profile);
+		}
 		if (data.action === "resume" && data.opening) {
-			frappe.show_alert(
-				{
-					message: __("Resuming your open till…"),
-					indicator: "blue",
-				},
-				3
-			);
-			me.prepare_app_defaults(data.opening);
-			// Don't wait for the whole AJAX queue — start offline cache after paint.
-			setTimeout(() => kqs_init_offline_cache(me), 0);
-			// Clear any leftover Desk freeze so the till isn't stuck greyed out.
-			setTimeout(() => {
-				try {
-					frappe.dom.unfreeze();
-				} catch (e) {
-					/* ignore */
-				}
-			}, 400);
+			const joined =
+				Boolean(data.joined) ||
+				(data.opening.user && data.opening.user !== frappe.session.user);
+			resume_pos_opening(me, data.opening, joined);
 			return true;
 		}
 		if (data.action === "close" && data.opening?.name) {
@@ -9226,14 +9686,19 @@ frappe.provide("kqs_retail.point_of_sale");
 			show_till_blocked_dialog(data);
 			return true;
 		}
+		if (data.action === "pick") {
+			show_branch_pick_dialog(me, data);
+			return true;
+		}
 		return false;
 	}
 
 	function resolve_opening_then(controller, on_create) {
+		const preferred = read_pos_branch_session()?.pos_profile || "";
 		return frappe
 			.call({
 				method: "kqs_retail.api.pos.resolve_pos_opening_entry",
-				args: { user: frappe.session.user },
+				args: { pos_profile: preferred },
 			})
 			.then((r) => {
 				const data = r.message || {};
@@ -9243,17 +9708,8 @@ frappe.provide("kqs_retail.point_of_sale");
 				if (data.default_pos_profile) {
 					controller._kqs_default_pos_profile = data.default_pos_profile;
 				}
-				if (data.other_open_profiles?.length) {
-					const names = data.other_open_profiles
-						.map((row) => `${row.pos_profile} (${row.user})`)
-						.join(", ");
-					frappe.show_alert(
-						{
-							message: __("Other tills already open: {0}", [names]),
-							indicator: "orange",
-						},
-						8
-					);
+				if (data.branches?.length) {
+					controller._kqs_branch_names = data.branches.map((row) => row.pos_profile);
 				}
 				on_create?.(data);
 			})
@@ -9286,18 +9742,17 @@ frappe.provide("kqs_retail.point_of_sale");
 		const orig_create_opening_voucher = Controller.prototype.create_opening_voucher;
 		Controller.prototype.create_opening_voucher = function () {
 			const me = this;
+			if (me._kqs_skip_opening_resolve) {
+				me._kqs_skip_opening_resolve = false;
+				orig_create_opening_voucher.call(me);
+				frappe.after_ajax(() => apply_opening_dialog_profile(me));
+				return;
+			}
 			// Second device / refresh can race past check_opening_entry — never show
 			// Create Opening when this cashier already has an Open till.
 			resolve_opening_then(me, () => {
 				orig_create_opening_voucher.call(me);
-				if (me._kqs_default_pos_profile) {
-					frappe.after_ajax(() => {
-						const dlg = cur_dialog;
-						if (dlg?.fields_dict?.pos_profile) {
-							dlg.set_value("pos_profile", me._kqs_default_pos_profile);
-						}
-					});
-				}
+				frappe.after_ajax(() => apply_opening_dialog_profile(me));
 			});
 		};
 
@@ -9319,6 +9774,17 @@ frappe.provide("kqs_retail.point_of_sale");
 				6
 			);
 			prepare_closing_and_route(this.pos_opening);
+		};
+
+		const orig_prepare_app_defaults = Controller.prototype.prepare_app_defaults;
+		Controller.prototype.prepare_app_defaults = function (data) {
+			save_pos_branch_session(data);
+			const out = orig_prepare_app_defaults.apply(this, arguments);
+			const schedule_menu = () => ensure_pos_tools_menu();
+			setTimeout(schedule_menu, 0);
+			setTimeout(schedule_menu, 400);
+			setTimeout(schedule_menu, 1200);
+			return out;
 		};
 
 		Controller.prototype._kqs_opening_flow_patched = true;
@@ -9466,6 +9932,69 @@ frappe.provide("kqs_retail.point_of_sale");
 		Controller.prototype._kqs_checkout_patched = true;
 	}
 
+	const kqs_style_code_by_item = Object.create(null);
+
+	function normalize_sku_part(value) {
+		return String(value || "")
+			.trim()
+			.replace(/\s+/g, "-")
+			.toUpperCase();
+	}
+
+	function remember_style_code(item) {
+		if (!item || !item.item_code) return;
+		const code = String(item.item_code).trim();
+		const style = String(item.style_code || item.variant_of || "").trim();
+		if (style) kqs_style_code_by_item[code] = style;
+		else if (!kqs_style_code_by_item[code]) kqs_style_code_by_item[code] = code;
+	}
+
+	function style_code_from_item_name(item_code, item_name) {
+		const code = String(item_code || "").trim();
+		if (!code) return "";
+		const name = String(item_name || "");
+		const m = name.match(/\(([^)]+)\)\s*$/);
+		if (!m) return code;
+		const values = m[1]
+			.split(",")
+			.map((part) => {
+				const bits = part.split(":");
+				return (bits.length > 1 ? bits.slice(1).join(":") : part).trim();
+			})
+			.filter(Boolean)
+			.map(normalize_sku_part);
+		if (!values.length) return code;
+
+		let style = code;
+		for (let i = 0; i < 8; i++) {
+			const upper = style.toUpperCase();
+			let matched = false;
+			for (const value of values) {
+				const suffix = `-${value}`;
+				if (upper.endsWith(suffix)) {
+					style = style.slice(0, style.length - suffix.length);
+					matched = true;
+					break;
+				}
+			}
+			if (!matched) break;
+		}
+		return style || code;
+	}
+
+	function display_style_code(item) {
+		if (!item) return "";
+		if (typeof item === "string") {
+			return kqs_style_code_by_item[item] || item;
+		}
+		remember_style_code(item);
+		const code = String(item.item_code || "").trim();
+		const style = String(item.style_code || item.variant_of || "").trim();
+		if (style) return style;
+		if (code && kqs_style_code_by_item[code]) return kqs_style_code_by_item[code];
+		return style_code_from_item_name(code, item.item_name) || code;
+	}
+
 	function variant_attribute_badges_html(variant_attributes) {
 		if (!variant_attributes || !variant_attributes.length) return "";
 		const badges = variant_attributes
@@ -9481,21 +10010,45 @@ frappe.provide("kqs_retail.point_of_sale");
 		return badges ? `<div class="kqs-pos-attr-badges">${badges}</div>` : "";
 	}
 
+	function pos_item_sku_html(style_code) {
+		const code = String(style_code || "").trim();
+		if (!code) return "";
+		const esc = frappe.utils.escape_html(code);
+		return `<div class="kqs-pos-sku" title="${esc}">${esc}</div>`;
+	}
+
+	function pos_item_meta_html(item) {
+		remember_style_code(item);
+		const attrs = variant_attribute_badges_html(item && item.variant_attributes);
+		const sku = pos_item_sku_html(display_style_code(item));
+		if (!attrs && !sku) return "";
+		return `<div class="kqs-pos-item-meta">${attrs}${sku}</div>`;
+	}
+
 	function inject_pos_attribute_badge_styles() {
-		if (document.getElementById("kqs-pos-attr-badge-styles")) return;
+		const style_id = "kqs-pos-attr-badge-styles-v2";
+		document.querySelectorAll('[id^="kqs-pos-attr-badge-styles"]').forEach((el) => el.remove());
 		const style = document.createElement("style");
-		style.id = "kqs-pos-attr-badge-styles";
+		style.id = style_id;
 		style.textContent = `
-			.point-of-sale-app .items-container.show-item-image > .item-wrapper > .item-detail:has(.kqs-pos-attr-badges) {
+			.point-of-sale-app .items-container.show-item-image > .item-wrapper > .item-detail:has(.kqs-pos-item-meta) {
 				height: auto;
 				min-height: 3.5rem;
 				padding-bottom: 0.35rem;
+			}
+			.kqs-pos-item-meta {
+				display: flex;
+				flex-direction: column;
+				align-items: flex-start;
+				gap: 0.2rem;
+				margin-top: 0.3rem;
+				max-width: 100%;
+				min-width: 0;
 			}
 			.kqs-pos-attr-badges {
 				display: flex;
 				flex-wrap: wrap;
 				gap: 0.25rem;
-				margin-top: 0.3rem;
 				max-width: 100%;
 			}
 			.kqs-pos-attr-badge {
@@ -9513,8 +10066,37 @@ frappe.provide("kqs_retail.point_of_sale");
 				text-overflow: ellipsis;
 				white-space: nowrap;
 			}
-			.point-of-sale-app .items-container.hide-item-image > .item-wrapper .kqs-pos-attr-badges {
+			.kqs-pos-sku {
+				display: -webkit-box;
+				-webkit-box-orient: vertical;
+				-webkit-line-clamp: 2;
+				max-width: 100%;
+				min-width: 0;
+				font-size: 10px;
+				font-weight: 500;
+				line-height: 1.25;
+				color: #64748b;
+				letter-spacing: 0.01em;
+				overflow: hidden;
+				word-break: break-word;
+				overflow-wrap: anywhere;
+			}
+			.point-of-sale-app .items-container.hide-item-image > .item-wrapper .kqs-pos-item-meta {
 				margin-top: 0.15rem;
+			}
+			.point-of-sale-app .cart-item-wrapper .kqs-pos-cart-sku {
+				display: -webkit-box;
+				-webkit-box-orient: vertical;
+				-webkit-line-clamp: 2;
+				max-width: 100%;
+				margin-top: 0.15rem;
+				font-size: 11px;
+				font-weight: 500;
+				line-height: 1.25;
+				color: #64748b;
+				overflow: hidden;
+				word-break: break-word;
+				overflow-wrap: anywhere;
 			}
 		`;
 		document.head.appendChild(style);
@@ -9556,14 +10138,36 @@ frappe.provide("kqs_retail.point_of_sale");
 		const orig_get_item_html = ItemSelector.prototype.get_item_html;
 		ItemSelector.prototype.get_item_html = function (item) {
 			const html = orig_get_item_html.call(this, item);
-			const badges = variant_attribute_badges_html(item.variant_attributes);
-			if (!badges) return html;
+			const meta = pos_item_meta_html(item);
+			if (!meta) return html;
 
 			const $el = $(html);
-			$el.find(".item-detail").append(badges);
+			$el.find(".item-detail").append(meta);
 			return $el[0].outerHTML;
 		};
 		ItemSelector.prototype._kqs_attr_badges_patched = true;
+		inject_pos_attribute_badge_styles();
+	}
+
+	function patch_cart_item_sku() {
+		if (!window.erpnext?.PointOfSale?.ItemCart) return;
+		const ItemCart = erpnext.PointOfSale.ItemCart;
+		if (ItemCart.prototype._kqs_cart_sku_patched) return;
+
+		const orig_render = ItemCart.prototype.render_cart_item;
+		ItemCart.prototype.render_cart_item = function (item_data, $item_to_update) {
+			orig_render.call(this, item_data, $item_to_update);
+			const $item = this.get_cart_item(item_data);
+			if (!$item || !$item.length) return;
+			$item.find(".kqs-pos-cart-sku").remove();
+			const style = display_style_code(item_data);
+			if (!style) return;
+			const esc = frappe.utils.escape_html(style);
+			$item
+				.find(".item-name")
+				.after(`<div class="kqs-pos-cart-sku" title="${esc}">${esc}</div>`);
+		};
+		ItemCart.prototype._kqs_cart_sku_patched = true;
 		inject_pos_attribute_badge_styles();
 	}
 
@@ -9605,8 +10209,10 @@ frappe.provide("kqs_retail.point_of_sale");
 		patch_pos_controller();
 		patch_pos_cart();
 		patch_item_selector();
+		patch_cart_item_sku();
 		patch_past_order_summary_return();
 		patch_past_order_summary_print();
+		patch_past_order_list_defaults();
 		ensure_kqs_pos_instance_patches(window.cur_pos);
 	}
 

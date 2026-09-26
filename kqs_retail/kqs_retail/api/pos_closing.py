@@ -12,6 +12,10 @@ from frappe.utils import flt
 from erpnext.accounts.doctype.pos_closing_entry.pos_closing_entry import (
 	make_closing_entry_from_opening,
 )
+from kqs_retail.utils.closing_till_totals import (
+	apply_till_extras_to_closing,
+	get_breakdown_for_doc,
+)
 from kqs_retail.utils.closing_validation import (
 	collect_closing_blockers,
 	throw_if_closing_blocked,
@@ -41,7 +45,7 @@ def _saved_closing_amounts(doc) -> dict[str, float]:
 	}
 
 
-def _apply_fresh_closing_data(doc, fresh, preserve_closing: bool = True) -> None:
+def _apply_fresh_closing_data(doc, fresh, preserve_closing: bool = True, *, persist_breakdown: bool = True) -> None:
 	saved = _saved_closing_amounts(doc) if preserve_closing else {}
 
 	doc.pos_invoices = []
@@ -70,17 +74,21 @@ def _apply_fresh_closing_data(doc, fresh, preserve_closing: bool = True) -> None
 	doc.total_quantity = fresh.total_quantity
 	doc.total_taxes_and_charges = fresh.total_taxes_and_charges
 	doc.period_end_date = fresh.period_end_date
+	apply_till_extras_to_closing(doc, persist_breakdown=persist_breakdown)
 
 
-def _reload_closing_invoices(doc, *, preserve_closing: bool = True) -> None:
+def _reload_closing_invoices(doc, *, preserve_closing: bool = True, persist_breakdown: bool = True) -> None:
 	opening = frappe.get_doc("POS Opening Entry", doc.pos_opening_entry)
 	fresh = make_closing_entry_from_opening(opening)
-	_apply_fresh_closing_data(doc, fresh, preserve_closing=preserve_closing)
+	_apply_fresh_closing_data(
+		doc, fresh, preserve_closing=preserve_closing, persist_breakdown=persist_breakdown
+	)
 
 
 def _serialize_closing_payload(doc, blockers: list | None = None) -> dict:
 	if blockers is None:
 		blockers = collect_closing_blockers(doc)
+	breakdown = get_breakdown_for_doc(doc)
 	return {
 		"name": doc.name,
 		"pos_opening_entry": doc.pos_opening_entry,
@@ -97,6 +105,7 @@ def _serialize_closing_payload(doc, blockers: list | None = None) -> dict:
 			}
 			for row in doc.payment_reconciliation
 		],
+		"till_breakdown": breakdown,
 		"blockers": blockers,
 		"can_submit": not blockers,
 	}
@@ -168,6 +177,7 @@ def prepare_closing_entry(pos_opening_entry: str) -> dict:
 		_reload_closing_invoices(doc, preserve_closing=True)
 	else:
 		doc = make_closing_entry_from_opening(opening)
+		apply_till_extras_to_closing(doc)
 		doc.insert()
 
 	doc.save()
@@ -176,18 +186,34 @@ def prepare_closing_entry(pos_opening_entry: str) -> dict:
 
 @frappe.whitelist()
 def get_closing_blockers(name: str) -> dict:
-	"""List invoices that must be fixed before this closing entry can submit."""
+	"""List invoices that must be fixed before this closing entry can submit.
+
+	Read-only for the browser form: never save here. Saving on refresh raced with
+	Submit Closing and caused TimestampMismatchError.
+	"""
 	if not name:
 		frappe.throw(_("POS Closing Entry is required."))
 
 	doc = frappe.get_doc("POS Closing Entry", name)
 	_authorize_closing_entry(doc)
-	_reload_closing_invoices(doc, preserve_closing=True)
+	# In-memory refresh only — do not bump modified / write breakdown.
+	_reload_closing_invoices(doc, preserve_closing=True, persist_breakdown=False)
 	blockers = collect_closing_blockers(doc)
 	return {
 		"name": doc.name,
 		"blockers": blockers,
 		"can_submit": not blockers,
+		"till_breakdown": get_breakdown_for_doc(doc),
+		"payment_reconciliation": [
+			{
+				"mode_of_payment": row.mode_of_payment,
+				"opening_amount": flt(row.opening_amount),
+				"expected_amount": flt(row.expected_amount),
+				"closing_amount": flt(row.closing_amount or row.expected_amount),
+				"difference": flt(row.difference),
+			}
+			for row in doc.payment_reconciliation
+		],
 	}
 
 
@@ -210,11 +236,14 @@ def submit_closing_entry(name: str, payment_reconciliation: str | None = None) -
 	if payment_reconciliation:
 		_apply_closing_amounts(doc, payment_reconciliation)
 
-	_reload_closing_invoices(doc, preserve_closing=True)
+	_reload_closing_invoices(doc, preserve_closing=True, persist_breakdown=True)
 
 	throw_if_closing_blocked(doc)
 
+	# Submit owns the write — ignore stale client/form timestamps and refresh races.
+	doc.flags.ignore_version = True
 	doc.save()
+	doc.flags.ignore_version = True
 	doc.submit()
 
 	return {

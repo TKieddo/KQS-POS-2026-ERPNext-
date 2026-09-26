@@ -18,6 +18,9 @@
 			currency: row.currency || null,
 			batch_no: null,
 			item_group: row.item_group || null,
+			style_code: row.style_code || row.variant_of || row.item_code,
+			variant_of: row.variant_of || null,
+			variant_attributes: row.variant_attributes || null,
 		};
 	}
 

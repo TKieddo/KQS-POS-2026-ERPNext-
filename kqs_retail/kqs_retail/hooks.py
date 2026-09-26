@@ -115,6 +115,7 @@ after_migrate = [
 	# Print formats before settings — settings Link fields need them to exist.
 	"kqs_retail.setup.receipt_print_formats.ensure_receipt_print_formats",
 	"kqs_retail.setup.kqs_retail_settings.ensure_kqs_retail_settings",
+	"kqs_retail.setup.bulk_import_page.ensure_bulk_import_page",
 	"kqs_retail.setup.product_fields.ensure_product_custom_fields",
 	"kqs_retail.setup.catalog_permissions.ensure",
 	"kqs_retail.setup.cashier_permissions.ensure",
@@ -124,7 +125,9 @@ after_migrate = [
 	"kqs_retail.setup.customer_defaults.ensure_customer_defaults",
 	"kqs_retail.setup.customer_fields.ensure_customer_custom_fields",
 	"kqs_retail.setup.invoice_fields.ensure_invoice_custom_fields",
+	"kqs_retail.setup.closing_fields.ensure_closing_custom_fields",
 	"kqs_retail.setup.store_credit.ensure_store_credit_setup",
+	"kqs_retail.setup.layby_settlement.ensure_layby_settlement_setup",
 	"kqs_retail.setup.pos_profile_fields.ensure_pos_profile_receipt_fields",
 	"kqs_retail.setup.branding.ensure_kqs_branding",
 ]
@@ -132,6 +135,10 @@ after_migrate = [
 doc_events = {
 	"POS Profile": {
 		"validate": "kqs_retail.setup.pos_payments.enforce_manual_payment_entry",
+	},
+	"POS Closing Entry": {
+		"validate": "kqs_retail.utils.pos_closing_hooks.validate",
+		"before_submit": "kqs_retail.utils.pos_closing_hooks.before_submit",
 	},
 	"Sales Invoice": {
 		"before_submit": [
@@ -191,7 +198,7 @@ fixtures = [
 	},
 	{
 		"dt": "Page",
-		"filters": [["name", "in", ["quick-add-product", "edit-product", "receive-stock", "assign-to-branch", "kqs-returns", "kqs-customer-account", "kqs-layby-ops"]]],
+		"filters": [["name", "in", ["quick-add-product", "edit-product", "receive-stock", "assign-to-branch", "bulk-stock-import", "kqs-returns", "kqs-customer-account", "kqs-layby-ops"]]],
 	},
 	{
 		"dt": "Report",

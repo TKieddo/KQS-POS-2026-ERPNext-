@@ -49,6 +49,11 @@ def is_kqs_cashier_only(user: str | None = None) -> bool:
 	return not bool(roles & DESK_OVERRIDE_ROLES)
 
 
+def can_choose_pos_branch(user: str | None = None) -> bool:
+	"""Managers/admins pick a store till; cashiers stay on assigned profiles."""
+	return not is_kqs_cashier_only(user)
+
+
 def get_cashier_pos_profiles(user: str | None = None) -> list[str]:
 	"""POS Profile names assigned via User Permission (empty = use broad POS filter)."""
 	user = user or frappe.session.user

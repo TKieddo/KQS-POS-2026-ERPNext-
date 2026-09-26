@@ -226,9 +226,30 @@
 }
 
 .kqs-grand {
-	font-size: 12pt;
-	font-weight: 900;
+	font-size: 11pt;
+	font-weight: 800;
 	margin-top: 1.2mm;
+}
+
+.kqs-cashup-title {
+	font-size: 9.5pt;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	margin: 0.4mm 0;
+}
+
+.kqs-cashup-section {
+	font-size: 8.5pt;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 1.2mm;
+}
+
+.kqs-cashup-slip .kqs-grand {
+	font-size: 10.5pt;
+	font-weight: 800;
 }
 
 .kqs-script {
@@ -308,7 +329,7 @@
 	print-color-adjust: exact;
 }
 
-/* Cash up — Mode | Expected | Counted | Diff (fit 80mm). */
+/* Cash up — Mode | Expected | Counted | Diff (fit 80mm). Match sale-slip weight. */
 .kqs-cashup-head,
 .kqs-cashup-row {
 	display: grid;
@@ -316,20 +337,20 @@
 	gap: 0.7mm;
 	align-items: start;
 	width: 100%;
-	font-size: 8pt;
+	font-size: 8.5pt;
 	font-weight: 800;
 }
 
 .kqs-cashup-head {
-	font-weight: 900;
+	font-weight: 800;
 	border-bottom: 1.5px solid #000;
 	padding-bottom: 0.7mm;
 	margin-bottom: 0.8mm;
 }
 
 .kqs-cashup-row {
-	margin: 1.1mm 0;
-	padding-bottom: 0.6mm;
+	margin: 0.9mm 0;
+	padding-bottom: 0.5mm;
 	border-bottom: 1px dashed #000;
 }
 
@@ -342,20 +363,20 @@
 .kqs-cashup-row .mode {
 	min-width: 0;
 	overflow-wrap: anywhere;
-	line-height: 1.2;
+	line-height: 1.25;
 }
 
 .kqs-cashup-mode-name {
 	display: block;
-	font-weight: 900;
+	font-weight: 800;
 	font-size: 8.5pt;
 }
 
 .kqs-cashup-open {
 	display: block;
-	font-size: 7.5pt;
+	font-size: 8pt;
 	font-weight: 800;
-	margin-top: 0.3mm;
+	margin-top: 0.2mm;
 }
 
 .kqs-cashup-head .amt,

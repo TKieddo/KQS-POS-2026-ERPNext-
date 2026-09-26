@@ -131,7 +131,11 @@ def get_variant_attributes_bulk(item_codes: list[str]) -> dict[str, list[dict[st
 
 
 def attach_variant_attributes_to_pos_items(result) -> None:
-	"""Mutate ERPNext POS get_items payload with variant_attributes lists."""
+	"""Mutate ERPNext POS get_items payload with variant badges + style code.
+
+	``style_code`` is the template (variant_of) when present, else item_code —
+	so the till shows ``12345`` not ``12345-BLACK-8``.
+	"""
 	if not result or not isinstance(result, dict):
 		return
 	items = result.get("items") or []
@@ -140,11 +144,26 @@ def attach_variant_attributes_to_pos_items(result) -> None:
 
 	codes = [item.get("item_code") for item in items if item.get("item_code")]
 	attr_map = get_variant_attributes_bulk(codes)
+	variant_of_map: dict[str, str] = {}
+	if codes:
+		for row in frappe.get_all(
+			"Item",
+			filters={"name": ["in", codes]},
+			fields=["name", "variant_of"],
+		):
+			parent = cstr(row.variant_of or "").strip()
+			if parent:
+				variant_of_map[row.name] = parent
+
 	for item in items:
 		code = item.get("item_code")
 		attrs = attr_map.get(code) or []
 		if attrs:
 			item["variant_attributes"] = attrs
+		style = variant_of_map.get(code) or cstr(code or "").strip()
+		item["style_code"] = style
+		if style != code:
+			item["variant_of"] = style
 
 
 def ensure_variant_not_orphaned(item_code: str) -> None:

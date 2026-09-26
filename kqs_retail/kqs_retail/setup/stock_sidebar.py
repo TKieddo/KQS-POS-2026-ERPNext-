@@ -4,6 +4,7 @@ import frappe
 
 STOCK_PAGE_LINKS = (
 	("Add Product", "quick-add-product"),
+	("Bulk Stock Import", "bulk-stock-import"),
 	("Edit Product", "edit-product"),
 	("Receive Stock", "receive-stock"),
 	("Assign to Branch", "assign-to-branch"),

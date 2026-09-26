@@ -159,6 +159,18 @@ Allowed cashier routes: `/app/point-of-sale` and `/app/pos-closing-entry/...` on
 
 ---
 
+## Managers opening Point of Sale
+
+Managers and admins are not tied to one till. Opening **Point of Sale** from Desk asks which branch to use (no default) **the first time in a browser tab**:
+
+- If that branch is **already open**, you join that session. Sales stay on the open till — you do not have to close it first.
+- If that branch is **not open**, you create your own opening for it. Other stores can stay open.
+- **Reload** reuses your last branch for this tab — you should not need to pick again until you close the till or open a new tab.
+- If **you** already have a till open, POS resumes that session. Close it first when you need a different branch.
+- Cashiers still cannot open a till another user already has open.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
