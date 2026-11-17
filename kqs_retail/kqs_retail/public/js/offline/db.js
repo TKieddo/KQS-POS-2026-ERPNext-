@@ -88,13 +88,70 @@
 			const all = await this.get_catalog();
 			const q = (term || "").toLowerCase().trim();
 			if (!q) return all.slice(0, limit);
+			const tokens = q.split(/\s+/).filter(Boolean);
+
+			function attr_blob(row) {
+				const attrs = row.variant_attributes || [];
+				return attrs
+					.map((a) => (typeof a === "object" ? a.value || "" : a) || "")
+					.join(" ")
+					.toLowerCase();
+			}
+
+			function score_row(row) {
+				const code = (row.item_code || "").toLowerCase();
+				const name = (row.item_name || "").toLowerCase();
+				const style = (row.style_code || row.variant_of || "").toLowerCase();
+				const attrs = attr_blob(row);
+				let score = 0;
+				let matched = 0;
+				for (const t of tokens) {
+					let hit = false;
+					if (code === t || style === t) {
+						score += 1000;
+						hit = true;
+					} else if (code.startsWith(t) || style.startsWith(t)) {
+						score += 500;
+						hit = true;
+					} else if (name.startsWith(t)) {
+						score += 200;
+						hit = true;
+					} else if (code.includes(t) || style.includes(t)) {
+						score += 150;
+						hit = true;
+					} else if (attrs.includes(t)) {
+						score += 120;
+						hit = true;
+					} else if (name.includes(t)) {
+						score += 80;
+						hit = true;
+					}
+					if (hit) matched += 1;
+				}
+				if (matched === tokens.length) score += 300;
+				else if (matched) score += matched * 10;
+				else score -= 50;
+				return score;
+			}
+
 			return all
-				.filter(
-					(r) =>
-						(r.item_code || "").toLowerCase().includes(q) ||
-						(r.item_name || "").toLowerCase().includes(q)
-				)
-				.slice(0, limit);
+				.map((r) => ({ r, s: score_row(r) }))
+				.filter((x) => x.s > 0)
+				.sort((a, b) => b.s - a.s)
+				.slice(0, limit)
+				.map((x) => x.r);
+		},
+		async get_local_stock_map() {
+			const rows = await with_store("local_stock", "readonly", (store) =>
+				req_to_promise(store.getAll())
+			);
+			const map = Object.create(null);
+			for (const row of rows || []) {
+				if (row && row.item_code) {
+					map[row.item_code] = Number(row.qty) || 0;
+				}
+			}
+			return map;
 		},
 		async put_laybys(rows) {
 			const db = await open_db();

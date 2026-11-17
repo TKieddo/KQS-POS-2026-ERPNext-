@@ -44,9 +44,9 @@ Tick items as you complete them: change `[ ]` to `[x]`.
 
 | Done | Feature | Notes |
 |:----:|---------|-------|
-| [ ] | Product search | *(ERPNext)* POS item grid |
+| [x] | Product search | *(KQS)* Token ranking + style/name widen in `api/pos.get_items` |
 | [ ] | Barcode scan | *(ERPNext)* USB scanner + item barcodes |
-| [ ] | Size / colour variants on screen | *(KQS)* Attribute badges on POS |
+| [x] | Size / colour variants on screen | *(KQS)* Attribute badges on POS |
 | [ ] | Change quantity | *(ERPNext)* |
 | [ ] | Line discount | *(ERPNext)* |
 | [ ] | Order discount | *(ERPNext)* |
@@ -56,9 +56,9 @@ Tick items as you complete them: change `[ ]` to `[x]`.
 | [ ] | Walk-in customer (no account needed) | *(KQS)* Seeded customer |
 | [ ] | Named customer on sale | *(ERPNext)* Customer field on POS |
 | [ ] | Customer lookup or quick create | *(ERPNext)* |
-| [ ] | Stock quantity visible at till | *(ERPNext)* On-hand qty |
-| [ ] | Sellable qty (minus layby holds) | *(KQS)* POS `get_items` overlays sellable at profile warehouse |
-| [ ] | Out-of-stock warning | *(ERPNext)* |
+| [x] | Stock quantity visible at till | *(KQS)* Large qty / Low stock / Out of stock badges on cards |
+| [x] | Sellable qty (minus layby holds) | *(KQS)* POS `get_items` overlays sellable at profile warehouse (batched Bin) |
+| [x] | Out-of-stock warning | *(KQS)* Muted card + Out of stock badge (still searchable) |
 | [ ] | Sale reduces store stock | *(ERPNext)* POS Profile → Update Stock |
 
 ---

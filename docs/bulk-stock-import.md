@@ -63,6 +63,46 @@ The downloaded sample template uses **integer qty** (`3`, not `x3`). `x3` only a
 
 **Moving a whole old catalogue:** export from the old system → paste/map into this template → Parse CSV into draft → review matches → Approve & publish in batches if needed.
 
+## Other POS → KQS (cheat-sheet)
+
+Use this when exporting from another till system (e.g. **ROBOTILL**) into Bulk Stock Import.
+
+### How KQS stores products
+
+| Case | CSV rows | size / color | Result after Approve |
+|------|----------|--------------|----------------------|
+| Variant product (sizes/colours) | **One row per combination** | Fill size and/or color | One template (`style`) + sellable variant SKUs |
+| No variants (plain product) | **One row** | Leave **both blank** | One standalone sellable SKU |
+| Same style, more stock later | Rows with existing style | Match existing size/color | **Add stock** (receive), not a duplicate product |
+
+`style` is the product identity. Same style → same product. Different size/colour under that style → variants. `price` is required to **create** a new style. `qty` must be a number. `category` must be an existing leaf Item Group (or set **Default category** on the Bulk Import page).
+
+### Typical column mapping
+
+| Other POS (ROBOTILL-style) | KQS column |
+|----------------------------|------------|
+| Description / Product name / Item name | `name` |
+| SKU / Style / Article / Product code | `style` |
+| Size | `size` (blank if none) |
+| Colour / Color | `color` (blank if none) |
+| On hand / Qty / Stock | `qty` |
+| Retail / Selling price / Price | `price` |
+| Barcode / EAN / PLU | `barcode` |
+| Category / Department / Group | `category` |
+
+If ROBOTILL exports one row per barcode/size already, map 1:1. If it exports one product with sizes in one cell, **split into one KQS row per size** before import.
+
+### Branch stock (e.g. BB Botha / Bothe)
+
+1. Convert export → KQS CSV (`name,style,size,color,qty,price,barcode,category`).
+2. Open `/app/bulk-stock-import` → Parse CSV.
+3. Set **Receive into** to that branch warehouse (Bothe / BB Botha POS warehouse — use the name on your site).
+4. Fix **Needs match** rows → **Approve & publish**.
+5. Cashiers on that till: hard-refresh POS; sellable qty appears for that warehouse only.
+6. To move stock to another store later: **Assign to Branch** — do **not** re-Approve the same draft (idempotent; will not double qty, and will not move stock).
+
+A stdlib converter script can be added under `scripts/` when a sample ROBOTILL export is available (see next-chat ROBOTILL prompt). Do not build a second importer UI.
+
 ## Drafts (survive reload)
 
 - Parsing CSV or AI extract **creates a draft** (`KQS Stock Import Batch`).

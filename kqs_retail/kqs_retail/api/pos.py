@@ -6,26 +6,135 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import get_datetime, getdate
+from frappe.utils import cstr, flt, get_datetime, getdate
 
 from kqs_retail.utils.items import attach_variant_attributes_to_pos_items
+
+# Widen fetch when multi-word search needs more candidates to re-rank.
+_WIDEN_PAGE_LENGTH = 100
+_WEAK_HIT_THRESHOLD = 150
 
 
 @frappe.whitelist()
 def get_items(start, page_length, price_list, item_group, pos_profile, search_term=""):
-	"""Wrap ERPNext POS get_items — variant badges + sellable qty (on-hand − layby holds)."""
+	"""Wrap ERPNext POS get_items — ranking + variant badges + sellable qty."""
 	from erpnext.selling.page.point_of_sale.point_of_sale import get_items as erpnext_get_items
+
+	start = int(start or 0)
+	page_length = max(1, min(int(page_length or 40), 100))
+	term = cstr(search_term or "").strip()
+	tokens = _tokenize(term)
 
 	result = erpnext_get_items(
 		start, page_length, price_list, item_group, pos_profile, search_term
 	)
+	if not isinstance(result, dict):
+		result = {"items": result or []}
+
 	attach_variant_attributes_to_pos_items(result)
+	items = list(result.get("items") or [])
+
+	# Multi-token: ERPNext uses one contiguous LIKE — widen on first token then re-rank.
+	if len(tokens) >= 2 and start == 0:
+		best = max((_score_item(it, tokens) for it in items), default=0)
+		if len(items) < page_length or best < _WEAK_HIT_THRESHOLD:
+			wide = erpnext_get_items(
+				0,
+				_WIDEN_PAGE_LENGTH,
+				price_list,
+				item_group,
+				pos_profile,
+				tokens[0],
+			)
+			if isinstance(wide, dict):
+				attach_variant_attributes_to_pos_items(wide)
+				items = _merge_items_by_code(items, wide.get("items") or [])
+
+	if tokens and items:
+		items.sort(
+			key=lambda it: (-_score_item(it, tokens), cstr(it.get("item_name") or ""))
+		)
+		# Only re-slice when we ranked a fresh first page (not infinite scroll).
+		if start == 0:
+			items = items[:page_length]
+
+	result["items"] = items
 	_apply_sellable_qty_to_pos_items(result, pos_profile)
 	return result
 
 
+def _tokenize(term: str) -> list[str]:
+	return [t.lower() for t in cstr(term or "").split() if t.strip()]
+
+
+def _merge_items_by_code(primary: list, extra: list) -> list:
+	seen: set[str] = set()
+	out: list = []
+	for item in list(primary or []) + list(extra or []):
+		code = cstr(item.get("item_code") or "")
+		if not code or code in seen:
+			continue
+		seen.add(code)
+		out.append(item)
+	return out
+
+
+def _attr_blob(item: dict) -> str:
+	parts = []
+	for row in item.get("variant_attributes") or []:
+		if isinstance(row, dict):
+			parts.append(cstr(row.get("value") or "").lower())
+		else:
+			parts.append(cstr(row).lower())
+	return " ".join(parts)
+
+
+def _score_item(item: dict, tokens: list[str]) -> float:
+	"""Higher = better match. Exact/prefix style/code beat loose name contains."""
+	if not tokens:
+		return 0.0
+
+	code = cstr(item.get("item_code") or "").lower()
+	name = cstr(item.get("item_name") or "").lower()
+	style = cstr(item.get("style_code") or item.get("variant_of") or "").lower()
+	attrs = _attr_blob(item)
+
+	score = 0.0
+	matched = 0
+	for t in tokens:
+		hit = False
+		if code == t or style == t:
+			score += 1000
+			hit = True
+		elif code.startswith(t) or style.startswith(t):
+			score += 500
+			hit = True
+		elif name.startswith(t):
+			score += 200
+			hit = True
+		elif t in code or t in style:
+			score += 150
+			hit = True
+		elif t in attrs:
+			score += 120
+			hit = True
+		elif t in name:
+			score += 80
+			hit = True
+		if hit:
+			matched += 1
+
+	if matched == len(tokens):
+		score += 300
+	elif matched:
+		score += matched * 10
+	else:
+		score -= 50
+	return score
+
+
 def _apply_sellable_qty_to_pos_items(result, pos_profile: str) -> None:
-	"""Replace displayed stock with sellable qty at the POS warehouse."""
+	"""Replace displayed stock with sellable qty at the POS warehouse (batched Bin)."""
 	if not result or not isinstance(result, dict):
 		return
 	items = result.get("items") or []
@@ -41,11 +150,13 @@ def _apply_sellable_qty_to_pos_items(result, pos_profile: str) -> None:
 	if not codes:
 		return
 	reserved = get_reserved_qty_map(warehouse)
+
+	on_hand_from_payload: dict[str, float] = {}
+	missing: list[str] = []
 	for item in items:
 		code = item.get("item_code")
 		if not code:
 			continue
-		# ERPNext POS may expose actual_qty under several keys depending on version.
 		on_hand = None
 		for key in ("actual_qty", "stock_qty"):
 			if key in item and item.get(key) is not None:
@@ -55,14 +166,33 @@ def _apply_sellable_qty_to_pos_items(result, pos_profile: str) -> None:
 				except (TypeError, ValueError):
 					pass
 		if on_hand is None:
-			on_hand = float(
-				frappe.db.get_value("Bin", {"item_code": code, "warehouse": warehouse}, "actual_qty")
-				or 0
-			)
+			missing.append(code)
+		else:
+			on_hand_from_payload[code] = on_hand
+
+	bin_map: dict[str, float] = {}
+	if missing:
+		unique_missing = list(dict.fromkeys(missing))
+		for row in frappe.db.get_all(
+			"Bin",
+			filters={"warehouse": warehouse, "item_code": ["in", unique_missing]},
+			fields=["item_code", "actual_qty"],
+		):
+			bin_map[row.item_code] = flt(row.actual_qty)
+
+	for item in items:
+		code = item.get("item_code")
+		if not code:
+			continue
+		if code in on_hand_from_payload:
+			on_hand = on_hand_from_payload[code]
+		else:
+			on_hand = bin_map.get(code, 0.0)
 		sellable = max(on_hand - float(reserved.get(code, 0) or 0), 0)
 		item["actual_qty"] = sellable
 		if "stock_qty" in item:
 			item["stock_qty"] = sellable
+
 
 @frappe.whitelist()
 def get_kqs_retail_settings():

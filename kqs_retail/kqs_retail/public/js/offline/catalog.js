@@ -33,10 +33,13 @@
 		const meta = (await window.kqs_offline_db.get_meta("session"))?.value || {};
 		const item_group = null; // group filter applied client-side if needed by caller
 
+		const stock_map =
+			(await window.kqs_offline_db.get_local_stock_map?.()) || Object.create(null);
 		const mapped = [];
 		for (const row of rows || []) {
 			if (item_group && row.item_group && row.item_group !== item_group) continue;
-			const local_qty = await window.kqs_offline_db.get_local_stock(row.item_code);
+			const local_qty =
+				stock_map[row.item_code] != null ? stock_map[row.item_code] : null;
 			mapped.push(row_to_pos_item(row, local_qty));
 		}
 

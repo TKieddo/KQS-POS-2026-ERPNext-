@@ -136,6 +136,16 @@ Manager: `manager@kqs.local` / `kqs123`. Production: `https://pos.kqsfootwear.co
 5. Smoke on Docker: login → search full name + style → see qty states → add → clear cart → checkout.  
 6. Deploy only when user asks.
 
+## Implementation status (this computer)
+
+**Done in code (pending Docker smoke + deploy):**
+
+- `api/pos.py` — token widen/rank; batched Bin sellable qty
+- `point_of_sale.js` — catalog `freeze: false`; OOS/Low stock card badges; customer-account fetch cache on payment panel
+- `offline/db.js` + `catalog.js` — ranked offline search; batched local stock map
+- `docs/bulk-stock-import.md` — Other POS / ROBOTILL cheat-sheet (BB Botha / Bothe)
+- Converter script — still waiting on a ROBOTILL sample export (next chat)
+
 ---
 
 ## Key files

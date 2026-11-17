@@ -6133,13 +6133,29 @@ frappe.provide("kqs_retail.point_of_sale");
 		return flt(kqs_customer_account.store_credit_balance);
 	}
 
-	function fetch_customer_account_summary(frm) {
+	let kqs_customer_account_fetch_key = "";
+	let kqs_customer_account_fetch_promise = null;
+
+	function fetch_customer_account_summary(frm, { force = false } = {}) {
 		if (!frm?.doc?.customer || is_walk_in_customer(frm)) {
 			kqs_customer_account = { ...EMPTY_CUSTOMER_ACCOUNT, walk_in: true };
+			kqs_customer_account_fetch_key = "";
+			kqs_customer_account_fetch_promise = null;
 			return Promise.resolve(kqs_customer_account);
 		}
 		const warehouse = get_pos_warehouse(frm);
-		return frappe
+		const key = `${frm.doc.customer}|${frm.doc.company || ""}|${warehouse || ""}`;
+		if (!force && kqs_customer_account_fetch_key === key && !kqs_customer_account.walk_in) {
+			if (kqs_customer_account_fetch_promise) {
+				return kqs_customer_account_fetch_promise;
+			}
+			return Promise.resolve(kqs_customer_account);
+		}
+		if (!force && kqs_customer_account_fetch_key === key && kqs_customer_account_fetch_promise) {
+			return kqs_customer_account_fetch_promise;
+		}
+		kqs_customer_account_fetch_key = key;
+		kqs_customer_account_fetch_promise = frappe
 			.call({
 				method: "kqs_retail.api.customer_account.get_customer_account_summary",
 				args: {
@@ -6149,13 +6165,20 @@ frappe.provide("kqs_retail.point_of_sale");
 				},
 			})
 			.then((r) => {
-				kqs_customer_account = { ...EMPTY_CUSTOMER_ACCOUNT, ...(r.message || {}) };
+				kqs_customer_account = {
+					...EMPTY_CUSTOMER_ACCOUNT,
+					...(r.message || {}),
+					customer: frm.doc.customer,
+					walk_in: false,
+				};
 				return kqs_customer_account;
 			})
 			.catch(() => {
 				kqs_customer_account = { ...EMPTY_CUSTOMER_ACCOUNT };
+				kqs_customer_account_fetch_key = "";
 				return kqs_customer_account;
 			});
+		return kqs_customer_account_fetch_promise;
 	}
 
 	function fetch_store_credit_balance(frm) {
@@ -9329,10 +9352,10 @@ frappe.provide("kqs_retail.point_of_sale");
 			restore_selected_payment_mode(this, selected_label);
 			apply_payment_instance_guards(this);
 			enhance_payment_method_panel();
+			// Banner from cache first — do not block mode taps on a network round-trip.
+			update_customer_account_banner(this);
 			if (frm) {
 				fetch_customer_account_summary(frm).then(() => update_customer_account_banner(this));
-			} else {
-				update_customer_account_banner(this);
 			}
 		};
 
@@ -10017,16 +10040,47 @@ frappe.provide("kqs_retail.point_of_sale");
 		return `<div class="kqs-pos-sku" title="${esc}">${esc}</div>`;
 	}
 
+	function pos_stock_state(item) {
+		const qty = Number(item?.actual_qty);
+		const n = Number.isFinite(qty) ? qty : 0;
+		if (n <= 0) {
+			return {
+				qty: n,
+				cls: "kqs-pos-oos",
+				badge: `<span class="kqs-pos-stock-badge kqs-pos-stock-oos">${__(
+					"Out of stock"
+				)}</span>`,
+			};
+		}
+		if (n <= 2) {
+			return {
+				qty: n,
+				cls: "kqs-pos-low",
+				badge: `<span class="kqs-pos-stock-badge kqs-pos-stock-low">${__(
+					"Low stock"
+				)} · ${frappe.utils.escape_html(String(n))}</span>`,
+			};
+		}
+		return {
+			qty: n,
+			cls: "kqs-pos-in-stock",
+			badge: `<span class="kqs-pos-stock-badge kqs-pos-stock-ok">${frappe.utils.escape_html(
+				String(n)
+			)}</span>`,
+		};
+	}
+
 	function pos_item_meta_html(item) {
 		remember_style_code(item);
+		const stock = pos_stock_state(item);
 		const attrs = variant_attribute_badges_html(item && item.variant_attributes);
 		const sku = pos_item_sku_html(display_style_code(item));
-		if (!attrs && !sku) return "";
-		return `<div class="kqs-pos-item-meta">${attrs}${sku}</div>`;
+		if (!attrs && !sku && !stock.badge) return "";
+		return `<div class="kqs-pos-item-meta">${stock.badge}${attrs}${sku}</div>`;
 	}
 
 	function inject_pos_attribute_badge_styles() {
-		const style_id = "kqs-pos-attr-badge-styles-v2";
+		const style_id = "kqs-pos-attr-badge-styles-v3";
 		document.querySelectorAll('[id^="kqs-pos-attr-badge-styles"]').forEach((el) => el.remove());
 		const style = document.createElement("style");
 		style.id = style_id;
@@ -10081,6 +10135,41 @@ frappe.provide("kqs_retail.point_of_sale");
 				word-break: break-word;
 				overflow-wrap: anywhere;
 			}
+			.kqs-pos-stock-badge {
+				display: inline-block;
+				max-width: 100%;
+				padding: 0.15rem 0.5rem;
+				border-radius: 0.35rem;
+				font-size: 11px;
+				font-weight: 700;
+				line-height: 1.2;
+				letter-spacing: 0.01em;
+			}
+			.kqs-pos-stock-ok {
+				background: #ecfdf5;
+				color: #065f46;
+				border: 1px solid #6ee7b7;
+			}
+			.kqs-pos-stock-low {
+				background: #fffbeb;
+				color: #92400e;
+				border: 1px solid #fbbf24;
+			}
+			.kqs-pos-stock-oos {
+				background: #f3f4f6;
+				color: #4b5563;
+				border: 1px solid #d1d5db;
+			}
+			.point-of-sale-app .item-wrapper.kqs-pos-oos {
+				opacity: 0.55;
+				filter: grayscale(0.35);
+			}
+			.point-of-sale-app .item-wrapper.kqs-pos-low {
+				box-shadow: inset 0 0 0 2px #fbbf24;
+			}
+			.point-of-sale-app .item-wrapper .kqs-pos-stock-badge {
+				margin-bottom: 0.1rem;
+			}
 			.point-of-sale-app .items-container.hide-item-image > .item-wrapper .kqs-pos-item-meta {
 				margin-top: 0.15rem;
 			}
@@ -10107,27 +10196,52 @@ frappe.provide("kqs_retail.point_of_sale");
 		const ItemSelector = erpnext.PointOfSale.ItemSelector;
 
 		if (!ItemSelector.prototype._kqs_offline_get_items_patched) {
-			const orig_get_items = ItemSelector.prototype.get_items;
 			ItemSelector.prototype.get_items = function (opts = {}) {
+				const start = opts.start ?? 0;
+				const page_length = opts.page_length ?? 40;
+				const search_term = opts.search_term ?? opts.search_value ?? "";
+				const call_opts = { start, page_length, search_term };
+
 				const use_cache =
 					window.kqs_offline &&
 					(!window.kqs_offline.is_online() || opts._kqs_force_cache);
 				if (use_cache && window.kqs_offline_catalog?.get_items_from_cache) {
 					return window.kqs_offline_catalog
-						.get_items_from_cache(opts)
+						.get_items_from_cache(call_opts)
 						.then((message) => ({ message }));
 				}
-				return orig_get_items.call(this, opts).catch((err) => {
-					if (window.kqs_offline_catalog?.get_items_from_cache) {
-						frappe.show_alert({
-							indicator: "orange",
-							message: __("Network failed — showing cached catalog."),
-						});
-						return window.kqs_offline_catalog
-							.get_items_from_cache(opts)
-							.then((message) => ({ message }));
-					}
-					throw err;
+
+				const selector = this;
+				return new Promise((resolve, reject) => {
+					frappe.call({
+						method: "erpnext.selling.page.point_of_sale.point_of_sale.get_items",
+						freeze: false,
+						args: {
+							start,
+							page_length,
+							price_list: selector.price_list,
+							item_group: selector.item_group,
+							pos_profile: selector.pos_profile,
+							search_term,
+						},
+						callback(r) {
+							resolve(r);
+						},
+						error(err) {
+							if (window.kqs_offline_catalog?.get_items_from_cache) {
+								frappe.show_alert({
+									indicator: "orange",
+									message: __("Network failed — showing cached catalog."),
+								});
+								window.kqs_offline_catalog
+									.get_items_from_cache(call_opts)
+									.then((message) => resolve({ message }))
+									.catch(reject);
+								return;
+							}
+							reject(err);
+						},
+					});
 				});
 			};
 			ItemSelector.prototype._kqs_offline_get_items_patched = true;
@@ -10139,10 +10253,14 @@ frappe.provide("kqs_retail.point_of_sale");
 		ItemSelector.prototype.get_item_html = function (item) {
 			const html = orig_get_item_html.call(this, item);
 			const meta = pos_item_meta_html(item);
-			if (!meta) return html;
-
+			const stock = pos_stock_state(item);
 			const $el = $(html);
-			$el.find(".item-detail").append(meta);
+			if (stock.cls) {
+				$el.addClass(stock.cls);
+			}
+			if (meta) {
+				$el.find(".item-detail").append(meta);
+			}
 			return $el[0].outerHTML;
 		};
 		ItemSelector.prototype._kqs_attr_badges_patched = true;
