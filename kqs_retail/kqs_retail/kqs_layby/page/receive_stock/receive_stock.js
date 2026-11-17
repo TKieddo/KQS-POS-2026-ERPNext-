@@ -11,11 +11,15 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 	const catalog_limit = 50;
 	let catalog_view = "list";
 	let catalog_search = "";
+	let catalog_seq = 0;
+	let catalog_shell_ready = false;
 	let selected_products = new Set();
 	let active_product = "";
 	let receive_lines = [];
+	let receive_lines_seq = 0;
 	let qty_by_code = {};
 	let rate_by_code = {};
+	let save_in_progress = false;
 
 	function format_float(value) {
 		return frappe.format(value, { fieldtype: "Float", precision: 2 });
@@ -57,15 +61,16 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 			{
 				fieldtype: "Section Break",
 				description: __(
-					"Receive inbound stock for products that already exist. Default warehouse is Central — then use Assign to Branch to send to stores. Zero-stock items are included."
+					"Receive inbound stock for products that already exist into the branch you choose (not assumed Central). Zero-stock items are included."
 				),
 			},
 			{
 				fieldname: "warehouse",
 				fieldtype: "Link",
 				options: "Warehouse",
-				label: __("Receive into"),
+				label: __("Receive into (branch)"),
 				reqd: 1,
+				description: __("Required — pick the store or Central that should receive this stock."),
 				get_query() {
 					return { query: "kqs_retail.api.stock_transfer.kqs_warehouse_query" };
 				},
@@ -166,26 +171,15 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 		return `<div class="kqs-catalog-grid">${cards}</div>`;
 	}
 
-	function render_catalog() {
-		const warehouse = form.get_value("warehouse");
-		if (!warehouse) {
-			$catalog().html(`<p class="text-muted">${__("Select a warehouse to browse products.")}</p>`);
+	function ensure_catalog_shell() {
+		if (catalog_shell_ready && $catalog().find(".kqs-catalog-shell").length) {
 			return;
 		}
-		const body = catalog_view === "grid" ? render_catalog_grid() : render_catalog_list();
-		const load_more = catalog_has_more
-			? `<button type="button" class="btn btn-default btn-sm mt-2 kqs-catalog-load-more">${__(
-					"Load more"
-			  )}</button>`
-			: "";
-		$catalog().html(`${render_catalog_toolbar()}${body}${load_more}`);
-		$catalog()
-			.find(".kqs-catalog-count")
-			.text(__("{0} shown", [catalog_rows.length]));
-		bind_catalog_events();
-	}
-
-	function bind_catalog_events() {
+		$catalog().html(`<div class="kqs-catalog-shell">
+			${render_catalog_toolbar()}
+			<div class="kqs-catalog-body"></div>
+			<div class="kqs-catalog-footer"></div>
+		</div>`);
 		const $root = $catalog();
 		$root.find(".kqs-catalog-search").on(
 			"input",
@@ -202,15 +196,50 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 			catalog_view = "grid";
 			render_catalog();
 		});
-		$root.find(".kqs-catalog-check").on("change", function () {
+		catalog_shell_ready = true;
+	}
+
+	function bind_catalog_body_events() {
+		const $root = $catalog();
+		$root.find(".kqs-catalog-check").off("change.kqs").on("change.kqs", function () {
 			const code = String($(this).closest("[data-code]").attr("data-code") || "");
 			toggle_product_selection(code, $(this).is(":checked"));
 		});
-		$root.find(".kqs-catalog-row, .kqs-catalog-card").on("click", function (e) {
-			if ($(e.target).is("input, label, a, button")) return;
-			select_single_product(String($(this).attr("data-code") || ""));
-		});
-		$root.find(".kqs-catalog-load-more").on("click", () => load_catalog(false));
+		$root
+			.find(".kqs-catalog-row, .kqs-catalog-card")
+			.off("click.kqs")
+			.on("click.kqs", function (e) {
+				if ($(e.target).is("input, label, a, button")) return;
+				select_single_product(String($(this).attr("data-code") || ""));
+			});
+		$root
+			.find(".kqs-catalog-load-more")
+			.off("click.kqs")
+			.on("click.kqs", () => load_catalog(false));
+	}
+
+	function render_catalog() {
+		const warehouse = form.get_value("warehouse");
+		if (!warehouse) {
+			catalog_shell_ready = false;
+			$catalog().html(`<p class="text-muted">${__("Select a warehouse to browse products.")}</p>`);
+			return;
+		}
+		ensure_catalog_shell();
+		const $root = $catalog();
+		// Keep the search input node — only refresh results so focus/cursor stay while typing.
+		$root.find(".kqs-view-list").toggleClass("active", catalog_view === "list");
+		$root.find(".kqs-view-grid").toggleClass("active", catalog_view === "grid");
+		const body = catalog_view === "grid" ? render_catalog_grid() : render_catalog_list();
+		const load_more = catalog_has_more
+			? `<button type="button" class="btn btn-default btn-sm mt-2 kqs-catalog-load-more">${__(
+					"Load more"
+			  )}</button>`
+			: "";
+		$root.find(".kqs-catalog-body").html(body);
+		$root.find(".kqs-catalog-footer").html(load_more);
+		$root.find(".kqs-catalog-count").text(__("{0} shown", [catalog_rows.length]));
+		bind_catalog_body_events();
 	}
 
 	function capture_qty_values() {
@@ -221,9 +250,22 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 				const code = String($(this).attr("data-code") || "");
 				const qty = $(this).find(".kqs-receive-qty").val();
 				const rate = $(this).find(".kqs-receive-rate").val();
-				if (qty) qty_by_code[code] = qty;
-				if (rate) rate_by_code[code] = rate;
+				if (qty !== undefined && qty !== null && String(qty).trim() !== "") {
+					qty_by_code[code] = qty;
+				} else {
+					delete qty_by_code[code];
+				}
+				if (rate !== undefined && rate !== null && String(rate).trim() !== "") {
+					rate_by_code[code] = rate;
+				} else {
+					delete rate_by_code[code];
+				}
 			});
+	}
+
+	function clear_receive_qty_fields() {
+		qty_by_code = {};
+		$grid().find(".kqs-receive-qty").val("");
 	}
 
 	function render_receive_grid() {
@@ -301,6 +343,7 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 		if (!warehouse) {
 			catalog_rows = [];
 			catalog_has_more = false;
+			catalog_shell_ready = false;
 			render_catalog();
 			return;
 		}
@@ -308,6 +351,7 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 			catalog_start = 0;
 			catalog_rows = [];
 		}
+		const seq = ++catalog_seq;
 		frappe.call({
 			method: "kqs_retail.api.stock_receive.search_products_for_receive",
 			args: {
@@ -318,6 +362,7 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 			},
 			callback(r) {
 				if (r.exc) return;
+				if (seq !== catalog_seq) return;
 				const msg = r.message || {};
 				const items = msg.items || [];
 				catalog_has_more = !!msg.has_more;
@@ -331,11 +376,13 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 	function load_receive_lines() {
 		const warehouse = form.get_value("warehouse");
 		const codes = Array.from(selected_products);
+		capture_qty_values();
 		if (!warehouse || !codes.length) {
 			receive_lines = [];
 			render_receive_grid();
 			return;
 		}
+		const seq = ++receive_lines_seq;
 		frappe.call({
 			method: "kqs_retail.api.stock_receive.get_bulk_receive_lines",
 			args: {
@@ -344,6 +391,7 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 			},
 			callback(r) {
 				if (r.exc) return;
+				if (seq !== receive_lines_seq) return;
 				receive_lines = (r.message && r.message.lines) || [];
 				render_receive_grid();
 			},
@@ -357,21 +405,66 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 		rate_by_code = {};
 		receive_lines = [];
 		catalog_search = "";
+		catalog_shell_ready = false;
 		load_catalog(true);
 		render_receive_grid();
 	}
 
 	frappe.call({
 		method: "kqs_retail.api.stock_receive.get_receive_defaults",
-		callback(r) {
-			if (r.message?.warehouse) {
-				form.set_value("warehouse", r.message.warehouse);
+		callback() {
+			if (!String(form.get_value("warehouse") || "").trim()) {
+				prompt_receive_warehouse();
+			} else {
 				on_warehouse_change();
 			}
 		},
 	});
 
+	function prompt_receive_warehouse() {
+		let remembered = "";
+		try {
+			remembered = localStorage.getItem("kqs_last_receive_warehouse") || "";
+		} catch (e) {
+			/* ignore */
+		}
+		const d = new frappe.ui.Dialog({
+			title: __("Which branch receives this stock?"),
+			fields: [
+				{
+					fieldname: "warehouse",
+					fieldtype: "Link",
+					options: "Warehouse",
+					label: __("Receive into (branch)"),
+					reqd: 1,
+					default: remembered,
+					get_query() {
+						return { query: "kqs_retail.api.stock_transfer.kqs_warehouse_query" };
+					},
+				},
+			],
+			primary_action_label: __("Continue"),
+			primary_action(values) {
+				const wh = String(values.warehouse || "").trim();
+				if (!wh) {
+					frappe.msgprint(__("Select a warehouse / branch."));
+					return;
+				}
+				try {
+					localStorage.setItem("kqs_last_receive_warehouse", wh);
+				} catch (e) {
+					/* ignore */
+				}
+				form.set_value("warehouse", wh);
+				d.hide();
+				on_warehouse_change();
+			},
+		});
+		d.show();
+	}
+
 	page.set_primary_action(__("Receive Stock"), () => {
+		if (save_in_progress) return;
 		const warehouse = form.get_value("warehouse");
 		if (!warehouse) {
 			frappe.msgprint(__("Select a warehouse."));
@@ -391,6 +484,7 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 			frappe.msgprint(__("Enter quantity for at least one item."));
 			return;
 		}
+		save_in_progress = true;
 		frappe.call({
 			method: "kqs_retail.api.stock_receive.receive_stock",
 			args: {
@@ -399,6 +493,7 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 			},
 			freeze: true,
 			callback(r) {
+				save_in_progress = false;
 				if (!r.exc && r.message) {
 					frappe.show_alert({
 						message: __(
@@ -407,10 +502,14 @@ frappe.pages["receive-stock"].on_page_load = function (wrapper) {
 						),
 						indicator: "green",
 					});
-					qty_by_code = {};
-					selected_products.clear();
-					on_warehouse_change();
+					// Clear qty fields so a second save cannot re-post the same amounts.
+					clear_receive_qty_fields();
+					load_receive_lines();
+					load_catalog(true);
 				}
+			},
+			error() {
+				save_in_progress = false;
 			},
 		});
 	});

@@ -31,6 +31,9 @@
   "qz_printer_name",
   "section_break_ai_import",
   "ai_provider",
+  "ai_api_key_openai",
+  "ai_api_key_deepseek",
+  "ai_api_key_qwen",
   "ai_api_key",
   "column_break_ai",
   "ai_base_url",
@@ -221,16 +224,35 @@
   },
   {
    "default": "openai",
-   "description": "Vision/chat provider for Bulk Stock Import paper photos. OpenAI, DeepSeek, and Qwen use OpenAI-compatible chat completions.",
+   "description": "Active provider for Bulk Stock Import. Switch anytime — each provider keeps its own API key below.",
    "fieldname": "ai_provider",
    "fieldtype": "Select",
    "label": "AI Provider",
    "options": "\nopenai\ndeepseek\nqwen"
   },
   {
+   "description": "Saved for OpenAI only. Switching provider does not erase this key.",
+   "fieldname": "ai_api_key_openai",
+   "fieldtype": "Password",
+   "label": "OpenAI API Key"
+  },
+  {
+   "description": "Saved for DeepSeek only. Use with model deepseek-flash for paper photos.",
+   "fieldname": "ai_api_key_deepseek",
+   "fieldtype": "Password",
+   "label": "DeepSeek API Key"
+  },
+  {
+   "description": "Saved for Qwen / DashScope only.",
+   "fieldname": "ai_api_key_qwen",
+   "fieldtype": "Password",
+   "label": "Qwen API Key"
+  },
+  {
+   "description": "Legacy single key — used only if the active provider’s key above is empty. Prefer the per-provider keys.",
    "fieldname": "ai_api_key",
    "fieldtype": "Password",
-   "label": "AI API Key"
+   "label": "Legacy AI API Key (fallback)"
   },
   {
    "fieldname": "column_break_ai",
@@ -243,7 +265,7 @@
    "label": "AI Base URL"
   },
   {
-   "description": "Optional model override (e.g. gpt-4o, deepseek-chat, qwen-vl-max).",
+   "description": "Optional override for the active provider only. Leave blank to use defaults: gpt-4o / deepseek-flash / qwen-vl-max.",
    "fieldname": "ai_model",
    "fieldtype": "Data",
    "label": "AI Model"

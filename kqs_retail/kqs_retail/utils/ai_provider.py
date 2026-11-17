@@ -15,7 +15,8 @@ PROVIDERS = ("openai", "deepseek", "qwen")
 
 DEFAULT_MODELS = {
 	"openai": "gpt-4o",
-	"deepseek": "deepseek-chat",
+	# deepseek-chat is text-only; paper photos need the vision-capable flash model
+	"deepseek": "deepseek-flash",
 	"qwen": "qwen-vl-max",
 }
 
@@ -24,6 +25,20 @@ DEFAULT_BASE_URLS = {
 	"deepseek": "https://api.deepseek.com",
 	"qwen": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
 }
+
+
+PROVIDER_KEY_FIELDS = {
+	"openai": "ai_api_key_openai",
+	"deepseek": "ai_api_key_deepseek",
+	"qwen": "ai_api_key_qwen",
+}
+
+
+def _password_from_settings(settings, fieldname: str) -> str:
+	try:
+		return (settings.get_password(fieldname, raise_exception=False) or "").strip()
+	except Exception:
+		return ""
 
 
 def get_ai_config() -> dict[str, Any]:
@@ -39,16 +54,21 @@ def get_ai_config() -> dict[str, Any]:
 			provider = (settings.get("ai_provider") or "").strip().lower()
 			base_url = (settings.get("ai_base_url") or "").strip()
 			model = (settings.get("ai_model") or "").strip()
-			try:
-				api_key = (settings.get_password("ai_api_key", raise_exception=False) or "").strip()
-			except Exception:
-				api_key = ""
+			# Prefer per-provider key so switching providers keeps each key saved
+			if provider in PROVIDER_KEY_FIELDS:
+				api_key = _password_from_settings(settings, PROVIDER_KEY_FIELDS[provider])
+			if not api_key:
+				api_key = _password_from_settings(settings, "ai_api_key")
 		except Exception:
 			pass
 
 	conf = frappe.conf or {}
 	provider = provider or (conf.get("kqs_ai_provider") or "").strip().lower()
-	api_key = api_key or (conf.get("kqs_ai_api_key") or conf.get("openai_api_key") or "").strip()
+	if not api_key:
+		# site_config may store per-provider or legacy single key
+		if provider:
+			api_key = (conf.get(f"kqs_ai_api_key_{provider}") or "").strip()
+		api_key = api_key or (conf.get("kqs_ai_api_key") or conf.get("openai_api_key") or "").strip()
 	base_url = base_url or (conf.get("kqs_ai_base_url") or "").strip()
 	model = model or (conf.get("kqs_ai_model") or "").strip()
 
@@ -150,7 +170,17 @@ def _chat_completions(cfg: dict[str, Any], payload: dict, timeout: int = 180) ->
 	except frappe.ValidationError:
 		raise
 	except Exception as exc:
-		frappe.throw(_("AI provider request failed: {0}").format(str(exc)[:200]))
+		msg = str(exc)
+		low = msg.lower()
+		if "timed out" in low or "max retries" in low or "failed to establish" in low or "name or service not known" in low:
+			frappe.throw(
+				_(
+					"Cannot reach {0} from this server (network timeout/block). "
+					"Try DeepSeek (model deepseek-flash) or Qwen (qwen-vl-max) in KQS Retail Settings, "
+					"or fix Docker/VPN outbound access to that API. Detail: {1}"
+				).format(cfg.get("base_url") or cfg.get("provider"), msg[:160])
+			)
+		frappe.throw(_("AI provider request failed: {0}").format(msg[:200]))
 
 	try:
 		return response["choices"][0]["message"]["content"]

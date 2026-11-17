@@ -2,13 +2,17 @@
 """
 KQS retail Item Group tree — source of truth for seeding ERPNext categories.
 
-Run:
+Run (full rebuild — deletes department trees first):
   bench --site frontend execute kqs_retail.setup.item_group_catalog.seed
+
+Safe ensure (creates missing groups only; converts flat Unisex → tree):
+  bench --site frontend execute kqs_retail.setup.item_group_catalog.ensure_kqs_item_groups
 """
 
 from __future__ import annotations
 
 import frappe
+from frappe.utils import cint
 
 KQS_ROOT = "All Item Groups"
 
@@ -115,6 +119,34 @@ KQS_DEPARTMENT_TREE: dict[str, dict[str, list[str]]] = {
 			"Lunch Boxes & Drink Bottles",
 		],
 	},
+	# Gender-neutral products — same Clothing / Shoes / Accessories shape as Men & Women
+	# so filters and the website can say "Unisex → Bags" not just "Unisex".
+	"Unisex": {
+		"Clothing": [
+			"T-shirts & Tops",
+			"Hoodies & Sweaters",
+			"Jackets & Coats",
+			"Pants & Shorts",
+			"Swimwear",
+		],
+		"Shoes": [
+			"Sneakers & Takkies",
+			"Sandals & Flip-flops",
+			"Slippers",
+			"Boots (Casual)",
+			"Sports/Athletic Shoes",
+		],
+		"Accessories": [
+			"Backpacks & Bags",
+			"Hats & Caps",
+			"Belts",
+			"Watches",
+			"Sunglasses",
+			"Socks",
+			"Wallets & Cardholders",
+			"Scarves & Beanies",
+		],
+	},
 	"Home & Living": {
 		"Bedding & Sleep": [
 			"Mattresses (Single, Double, Queen, King)",
@@ -162,7 +194,7 @@ ADD_PRODUCT_SECTIONS = [
 	{"key": "men", "title": "Men", "column": "right", "order": 1, "parent": "Men"},
 	{"key": "kids", "title": "Kids", "column": "left", "order": 2, "parent": "Kids"},
 	{"key": "home", "title": "Home & Living", "column": "right", "order": 2, "parent": "Home & Living"},
-	{"key": "unisex", "title": "Unisex", "column": "right", "order": 3, "parent": "Unisex", "leaf": True},
+	{"key": "unisex", "title": "Unisex", "column": "right", "order": 3, "parent": "Unisex"},
 	{
 		"key": "care",
 		"title": "General Care & Extras",
@@ -172,7 +204,9 @@ ADD_PRODUCT_SECTIONS = [
 	},
 ]
 
-UNISEX_ITEM_GROUP = "Unisex"
+# Prefer a real Unisex leaf for defaults / CSV examples (not the department folder).
+UNISEX_ITEM_GROUP = "Unisex — Backpacks & Bags"
+UNISEX_DEPARTMENT = "Unisex"
 
 DEFAULT_DEMO_ITEM_GROUP = "Men — Sneakers & Takkies"
 
@@ -183,7 +217,7 @@ def _subgroup_name(department: str, subgroup: str) -> str:
 
 def _leaf_name(department: str, leaf: str) -> str:
 	"""Unique Item Group name; apparel departments share many leaf labels."""
-	if department in ("Men", "Women", "Kids"):
+	if department in ("Men", "Women", "Kids", "Unisex"):
 		return f"{department} — {leaf}"
 	return leaf
 
@@ -229,6 +263,8 @@ def _clear_kqs_item_groups():
 
 
 def ensure_kqs_item_groups():
+	"""Create missing department / subgroup / leaf nodes. Safe to re-run on production."""
+	_promote_flat_unisex_if_needed()
 	for department, subgroups in KQS_DEPARTMENT_TREE.items():
 		_ensure_group(department, KQS_ROOT)
 		for subgroup, leaves in subgroups.items():
@@ -236,7 +272,84 @@ def ensure_kqs_item_groups():
 			_ensure_group(subgroup_name, department)
 			for leaf in leaves:
 				_ensure_leaf(_leaf_name(department, leaf), subgroup_name)
-	_ensure_leaf(UNISEX_ITEM_GROUP, KQS_ROOT)
+	try:
+		from frappe.utils.nestedset import rebuild_tree
+
+		rebuild_tree("Item Group", "parent_item_group")
+	except Exception:
+		frappe.log_error(title="KQS Item Group tree rebuild")
+
+
+def _promote_flat_unisex_if_needed():
+	"""
+	Older sites used a single leaf `Unisex`. Convert it to a department group and
+	move any items onto Unisex — Backpacks & Bags so filters stay valid.
+	"""
+	import json
+
+	from frappe.utils import cstr
+
+	if not frappe.db.exists("Item Group", UNISEX_DEPARTMENT):
+		return
+	is_group = cint(frappe.db.get_value("Item Group", UNISEX_DEPARTMENT, "is_group"))
+	if is_group:
+		return
+
+	holding = UNISEX_ITEM_GROUP  # Unisex — Backpacks & Bags
+	# Promote Unisex to a group, then create Accessories + holding leaf under it.
+	frappe.db.set_value(
+		"Item Group",
+		UNISEX_DEPARTMENT,
+		{"parent_item_group": KQS_ROOT, "is_group": 1},
+		update_modified=False,
+	)
+	_ensure_group(_subgroup_name(UNISEX_DEPARTMENT, "Accessories"), UNISEX_DEPARTMENT)
+	_ensure_leaf(holding, _subgroup_name(UNISEX_DEPARTMENT, "Accessories"))
+
+	# Items still on the old flat Unisex must move to a leaf (groups are not sellable categories).
+	frappe.db.sql(
+		"""
+		UPDATE `tabItem`
+		SET item_group = %s
+		WHERE item_group = %s
+		""",
+		(holding, UNISEX_DEPARTMENT),
+	)
+	if frappe.db.has_column("Item", "kqs_item_groups"):
+		for row in frappe.db.sql(
+			"""
+			SELECT name, kqs_item_groups
+			FROM `tabItem`
+			WHERE kqs_item_groups IS NOT NULL AND kqs_item_groups != ''
+			""",
+			as_dict=True,
+		):
+			try:
+				groups = json.loads(row.kqs_item_groups)
+			except Exception:
+				continue
+			if not isinstance(groups, list):
+				continue
+			changed = False
+			new_groups = []
+			for g in groups:
+				if cstr(g) == UNISEX_DEPARTMENT:
+					new_groups.append(holding)
+					changed = True
+				else:
+					new_groups.append(g)
+			if changed:
+				frappe.db.set_value(
+					"Item",
+					row.name,
+					"kqs_item_groups",
+					json.dumps(new_groups),
+					update_modified=False,
+				)
+
+	frappe.logger("kqs_retail").info(
+		"Promoted flat Unisex leaf to department; items moved to %s", holding
+	)
 
 
 def _ensure_group(name: str, parent: str):

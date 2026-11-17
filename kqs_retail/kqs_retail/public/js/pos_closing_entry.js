@@ -500,34 +500,44 @@ function show_closing_status_headline(frm) {
 	const bd = frm.kqs_till_breakdown;
 	if (bd?.totals) {
 		const fmt = (n) => format_currency(flt(n), frm.doc.currency || frappe.boot?.sysdefaults?.currency);
-		const money_in = flt(bd.totals.sales) + flt(bd.totals.layby) + flt(bd.totals.account) - flt(bd.totals.refunds);
+		const money_all =
+			bd.totals.money_received != null
+				? flt(bd.totals.money_received)
+				: flt(bd.totals.sales) + flt(bd.totals.layby) + flt(bd.totals.account) - flt(bd.totals.refunds);
+		const cash_till =
+			bd.totals.cash_in_till != null ? flt(bd.totals.cash_in_till) : money_all;
+		const credit_bit = flt(bd.totals.credit)
+			? __(" Credit owed {0} (not in till).", [fmt(bd.totals.credit)])
+			: "";
 		frm.dashboard.set_headline(
 			__(
-				"Money in till {0} = Sales {1} + Layby {2} + Account {3}{4}. Laybys are not listed under POS Transactions — they appear as Layby Received. Count the drawer against Expected on each payment mode.",
+				"Cash in till {0}. Total money received {1} = Sales paid {2} + Layby {3} + Account {4}{5}.{6} Count Cash against Expected Cash.",
 				[
-					fmt(money_in),
+					fmt(cash_till),
+					fmt(money_all),
 					fmt(bd.totals.sales),
 					fmt(bd.totals.layby),
 					fmt(bd.totals.account),
-					flt(bd.totals.refunds)
-						? __(" − Refunds {0}", [fmt(bd.totals.refunds)])
-						: "",
+					flt(bd.totals.refunds) ? __(" − Refunds {0}", [fmt(bd.totals.refunds)]) : "",
+					credit_bit,
 				]
 			)
 		);
 	} else if (frm.doc.docstatus === 1) {
+		const fmt = (n) => format_currency(flt(n), frm.doc.currency || frappe.boot?.sysdefaults?.currency);
 		const money =
 			flt(frm.doc.kqs_money_in_till) ||
 			flt(frm.doc.kqs_sales_tender) +
 				flt(frm.doc.kqs_layby_received) +
 				flt(frm.doc.kqs_account_collected) -
 				flt(frm.doc.kqs_till_refunds);
-		if (money || flt(frm.doc.kqs_layby_received)) {
-			const fmt = (n) => format_currency(flt(n), frm.doc.currency || frappe.boot?.sysdefaults?.currency);
+		const cash = flt(frm.doc.kqs_cash_in_till) || money;
+		if (money || flt(frm.doc.kqs_layby_received) || cash) {
 			frm.dashboard.set_headline(
 				__(
-					"Money in till {0} (Sales {1} + Layby {2}). Laybys are not listed under POS Transactions.",
+					"Cash in till {0}. Total money received {1} (Sales paid {2} + Layby {3}). Credit is not included.",
 					[
+						fmt(cash),
 						fmt(money),
 						fmt(frm.doc.kqs_sales_tender),
 						fmt(frm.doc.kqs_layby_received),

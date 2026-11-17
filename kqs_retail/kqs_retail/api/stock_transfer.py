@@ -61,9 +61,15 @@ def kqs_warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 @frappe.whitelist()
 def get_transfer_defaults():
 	company = get_default_company()
+	from kqs_retail.utils.warehouses import list_kqs_warehouse_choices
+
 	return {
 		"company": company,
-		"source_warehouse": _default_central_warehouse(company),
+		# Empty on purpose — Assign must pick From / To explicitly (multi-branch safe).
+		"source_warehouse": "",
+		"target_warehouse": "",
+		"central_warehouse": _default_central_warehouse(company),
+		"warehouses": list_kqs_warehouse_choices(company),
 	}
 
 
@@ -83,9 +89,9 @@ def assign_stock_to_branch(
 		frappe.throw(_("Target warehouse is required."))
 
 	company = company or frappe.db.get_value("Warehouse", target_warehouse, "company")
-	source = source_warehouse or _default_central_warehouse(company)
+	source = cstr(source_warehouse or "").strip()
 	if not source:
-		frappe.throw(_("Source warehouse not found. Configure Central warehouse first."))
+		frappe.throw(_("Select the From (source) warehouse — stock is taken from there."))
 	if source == target_warehouse:
 		frappe.throw(_("Source and target warehouse must be different."))
 	for wh, label in ((source, _("Source")), (target_warehouse, _("Target"))):
@@ -344,26 +350,35 @@ def list_source_catalog(
 	search: str = "",
 	start: int = 0,
 	limit: int = 50,
+	all_pages: int = 0,
 ):
 	"""Products with stock at source — grouped by template or standalone item."""
 	if not source_warehouse:
 		return {"items": [], "total": 0}
 
 	start = cint(start)
-	limit = min(cint(limit), 100)
+	# all_pages=1 used by “Select all matching” — still hard-capped for safety.
+	if cint(all_pages):
+		limit = min(max(cint(limit), 1), 5000)
+		start = 0
+	else:
+		limit = min(cint(limit), 100)
 	search = (search or "").strip()
 	params = {"warehouse": source_warehouse}
 	search_sql = ""
 	if search:
+		# Case-insensitive so "chulk" matches "Chulk" / CHULK style codes.
 		search_sql = """
 			AND (
-				i.item_name LIKE %(search)s
-				OR i.name LIKE %(search)s
-				OR i.item_code LIKE %(search)s
-				OR IFNULL(t.item_name, '') LIKE %(search)s
+				LOWER(IFNULL(i.item_name, '')) LIKE %(search)s
+				OR LOWER(IFNULL(i.name, '')) LIKE %(search)s
+				OR LOWER(IFNULL(i.item_code, '')) LIKE %(search)s
+				OR LOWER(IFNULL(t.item_name, '')) LIKE %(search)s
+				OR LOWER(IFNULL(t.name, '')) LIKE %(search)s
+				OR LOWER(IFNULL(t.item_code, '')) LIKE %(search)s
 			)
 		"""
-		params["search"] = f"%{search}%"
+		params["search"] = f"%{search.lower()}%"
 
 	rows = frappe.db.sql(
 		f"""
@@ -414,7 +429,76 @@ def list_source_catalog(
 
 	items = sorted(catalog.values(), key=lambda row: (row["item_name"] or "").lower())
 	total = len(items)
-	return {"items": items[start : start + limit], "total": total}
+	return {"items": items[start : start + limit], "total": total, "warehouse": source_warehouse}
+
+
+@frappe.whitelist()
+def list_branch_filter_options():
+	"""KQS warehouses for Item list branch switcher (Central + stores)."""
+	assert_stock_manager()
+	company = get_default_company()
+	names = list(get_kqs_warehouse_names(company) or [])
+	if not names:
+		return {"branches": [], "company": company}
+	central = get_kqs_central_warehouse(company)
+	rows = frappe.get_all(
+		"Warehouse",
+		filters={"name": ["in", names], "disabled": 0, "is_group": 0},
+		fields=["name", "warehouse_name"],
+		order_by="name asc",
+	)
+	branches = []
+	for row in rows:
+		label = (row.warehouse_name or row.name or "").strip() or row.name
+		branches.append(
+			{
+				"name": row.name,
+				"label": label,
+				"is_central": 1 if central and row.name == central else 0,
+			}
+		)
+	# Central first, then alphabetical by label.
+	branches.sort(key=lambda b: (0 if b["is_central"] else 1, (b["label"] or "").lower()))
+	return {"branches": branches, "company": company, "central": central or ""}
+
+
+@frappe.whitelist()
+def list_item_names_with_stock(warehouse: str, limit: int = 5000):
+	"""Item codes (variants + their templates) with on-hand qty at a warehouse.
+
+	Used by Item list branch filter so managers can see what each store holds.
+	"""
+	assert_stock_manager()
+	warehouse = cstr(warehouse or "").strip()
+	if not warehouse:
+		return {"item_names": [], "warehouse": ""}
+	if not is_kqs_store_warehouse(warehouse):
+		frappe.throw(_("Select a KQS store warehouse."))
+
+	limit = min(max(cint(limit), 1), 10000)
+	rows = frappe.db.sql(
+		"""
+		SELECT DISTINCT i.name AS item_code, IFNULL(i.variant_of, '') AS variant_of
+		FROM `tabBin` b
+		INNER JOIN `tabItem` i ON i.name = b.item_code
+		WHERE b.warehouse = %s
+		  AND b.actual_qty > 0
+		  AND IFNULL(i.disabled, 0) = 0
+		  AND i.is_stock_item = 1
+		LIMIT %s
+		""",
+		(warehouse, limit),
+		as_dict=True,
+	)
+	names: set[str] = set()
+	for row in rows:
+		code = cstr(row.item_code or "").strip()
+		parent = cstr(row.variant_of or "").strip()
+		if code:
+			names.add(code)
+		if parent:
+			names.add(parent)
+	return {"item_names": sorted(names), "warehouse": warehouse, "count": len(names)}
 
 
 @frappe.whitelist()

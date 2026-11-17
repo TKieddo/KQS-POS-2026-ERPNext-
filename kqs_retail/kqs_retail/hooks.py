@@ -121,6 +121,8 @@ after_migrate = [
 	"kqs_retail.setup.cashier_permissions.ensure",
 	"kqs_retail.setup.manager_permissions.ensure",
 	"kqs_retail.setup.stock_permissions.ensure",
+	# After cashier ensure — owners must not keep KQS Cashier / missing Stock Manager.
+	"kqs_retail.setup.owner_users.ensure",
 	"kqs_retail.setup.pos_payments.ensure_default_pos_payment_methods",
 	"kqs_retail.setup.customer_defaults.ensure_customer_defaults",
 	"kqs_retail.setup.customer_fields.ensure_customer_custom_fields",
@@ -184,6 +186,7 @@ doc_events = {
 scheduler_events = {
 	"daily": [
 		"kqs_retail.kqs_layby.tasks.check_overdue_laybys",
+		"kqs_retail.utils.log_cleanup.purge_old_logs",
 	],
 }
 

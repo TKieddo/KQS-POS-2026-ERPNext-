@@ -156,6 +156,33 @@ def is_kqs_store_warehouse(name: str, company: str = "") -> bool:
 	return name in get_kqs_warehouse_names(company)
 
 
+def list_kqs_warehouse_choices(company: str = "") -> list[dict]:
+	"""Central + branches for picker dialogs (never auto-applied as a silent default)."""
+	company = company or get_default_company()
+	names = get_kqs_warehouse_names(company)
+	if not names:
+		return []
+	central = get_kqs_central_warehouse(company)
+	rows = frappe.get_all(
+		"Warehouse",
+		filters={"name": ["in", names], "disabled": 0, "is_group": 0},
+		fields=["name", "warehouse_name"],
+		order_by="name asc",
+	)
+	out = []
+	for row in rows:
+		label = (row.warehouse_name or row.name or "").strip() or row.name
+		out.append(
+			{
+				"name": row.name,
+				"label": label,
+				"is_central": 1 if central and row.name == central else 0,
+			}
+		)
+	out.sort(key=lambda b: (0 if b["is_central"] else 1, (b["label"] or "").lower()))
+	return out
+
+
 def _is_erpnext_default_warehouse(warehouse_name: str | None) -> bool:
 	return (warehouse_name or "") in _ERPNEXT_DEFAULT_WAREHOUSE_NAMES
 

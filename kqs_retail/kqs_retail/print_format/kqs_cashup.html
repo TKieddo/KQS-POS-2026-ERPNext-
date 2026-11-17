@@ -1,4 +1,4 @@
-{# KQS Cashup — sales + layby + account till reconciliation (POS Closing Entry). #}
+{# KQS Cashup — plain-language till reconciliation (POS Closing Entry). #}
 {%- macro kqs_cashup_diff(amount) -%}
 {%- set d = frappe.utils.flt(amount or 0) -%}
 {%- if d > 0 -%}+{{ kqs_money(d) }}
@@ -8,10 +8,14 @@
 {%- endmacro -%}
 
 {%- set sales_t = frappe.utils.flt(doc.kqs_sales_tender) -%}
+{%- set credit_t = frappe.utils.flt(doc.kqs_sold_on_credit) -%}
+{%- set points_t = frappe.utils.flt(doc.kqs_points_redeemed) -%}
 {%- set layby_t = frappe.utils.flt(doc.kqs_layby_received) -%}
 {%- set account_t = frappe.utils.flt(doc.kqs_account_collected) -%}
 {%- set refund_t = frappe.utils.flt(doc.kqs_till_refunds) -%}
-{%- set has_till_split = sales_t or layby_t or account_t or refund_t -%}
+{%- set cash_till = frappe.utils.flt(doc.kqs_cash_in_till) -%}
+{%- set money_all = frappe.utils.flt(doc.kqs_money_in_till) -%}
+{%- set has_split = sales_t or credit_t or points_t or layby_t or account_t or refund_t or cash_till or money_all -%}
 
 <div class="kqs-rcpt kqs-cashup-slip">
 	{{ kqs_logo() }}
@@ -64,36 +68,49 @@
 			<span>{{ kqs_qty(doc.total_quantity) }}</span>
 		</div>
 		{%- endif -%}
-		{%- if has_till_split -%}
+
+		{%- if has_split -%}
 		<div class="kqs-row">
-			<span>Sales tender</span>
+			<span>Sales paid</span>
 			<span>{{ kqs_money(sales_t) }}</span>
 		</div>
+		{%- if credit_t -%}
+		<div class="kqs-row">
+			<span>Sold on credit (owed)</span>
+			<span>{{ kqs_money(credit_t) }}</span>
+		</div>
+		{%- endif -%}
+		{%- if points_t -%}
+		<div class="kqs-row">
+			<span>Points / store credit</span>
+			<span>{{ kqs_money(points_t) }}</span>
+		</div>
+		{%- endif -%}
 		<div class="kqs-row">
 			<span>Layby received</span>
 			<span>{{ kqs_money(layby_t) }}</span>
 		</div>
+		{%- if account_t -%}
 		<div class="kqs-row">
 			<span>Account collected</span>
 			<span>{{ kqs_money(account_t) }}</span>
 		</div>
+		{%- endif -%}
 		{%- if refund_t -%}
 		<div class="kqs-row">
-			<span>Till refunds</span>
+			<span>Refunds paid out</span>
 			<span>-{{ kqs_money(refund_t) }}</span>
 		</div>
 		{%- endif -%}
 		<div class="kqs-row kqs-grand">
-			<span>Money in till</span>
-			<span>{{ kqs_money(sales_t + layby_t + account_t - refund_t) }}</span>
+			<span>Total money received</span>
+			<span>{{ kqs_money(money_all if money_all else (sales_t + layby_t + account_t - refund_t)) }}</span>
+		</div>
+		<div class="kqs-row kqs-grand">
+			<span>Cash in till</span>
+			<span>{{ kqs_money(cash_till) }}</span>
 		</div>
 		{%- else -%}
-		{%- if doc.total_taxes_and_charges -%}
-		<div class="kqs-row">
-			<span>Tax</span>
-			<span>{{ kqs_money(doc.total_taxes_and_charges) }}</span>
-		</div>
-		{%- endif -%}
 		<div class="kqs-row kqs-grand">
 			<span>Sales total</span>
 			<span>{{ kqs_money(doc.grand_total) }}</span>
@@ -102,12 +119,13 @@
 	</div>
 
 	<hr class="kqs-rule" />
-	<div class="kqs-muted-line kqs-cashup-section">By payment mode</div>
+	<div class="kqs-muted-line kqs-cashup-section">By payment method</div>
+	<div class="kqs-muted-line" style="margin-bottom: 1mm;">Expected = money that should be there</div>
 
 	{%- set pays = doc.payment_reconciliation or [] -%}
 	{%- if pays -%}
 	<div class="kqs-cashup-head">
-		<span class="mode">Mode</span>
+		<span class="mode">Method</span>
 		<span class="amt">Expected</span>
 		<span class="amt">Counted</span>
 		<span class="amt">Diff</span>
@@ -155,11 +173,11 @@
 		</div>
 	</div>
 	{%- else -%}
-	<div class="kqs-muted-line">No payment modes on this closing.</div>
+	<div class="kqs-muted-line">No payment methods on this closing.</div>
 	{%- endif -%}
 
 	<hr class="kqs-rule" />
 	<div class="kqs-thanks">End of cash up</div>
 	<hr class="kqs-rule" />
-	<div class="kqs-center kqs-muted-line">Keep for store records</div>
+	<div class="kqs-center kqs-muted-line">Credit &amp; points are not cash in till</div>
 </div>

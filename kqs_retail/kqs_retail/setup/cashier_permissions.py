@@ -4,7 +4,10 @@
 import frappe
 
 from kqs_retail.setup.perm_utils import ensure_custom_perm
-from kqs_retail.utils.cashier_security import FORBIDDEN_EXTRA_CASHIER_ROLES
+from kqs_retail.utils.cashier_security import (
+	DESK_OVERRIDE_ROLES,
+	FORBIDDEN_EXTRA_CASHIER_ROLES,
+)
 
 ROLE = "KQS Cashier"
 
@@ -160,8 +163,19 @@ def _fix_cashier_user_permission_scope():
 				frappe.db.set_value("User Permission", row.name, "apply_to_all_doctypes", 0)
 
 
+def _is_desk_override_user(user) -> bool:
+	"""Owners/managers who also have KQS Cashier must keep Desk manager roles."""
+	roles = {row.role for row in (user.roles or []) if row.role}
+	return bool(roles & DESK_OVERRIDE_ROLES)
+
+
 def _strip_forbidden_cashier_roles():
-	"""Cashiers must not carry Sales User / manager roles that unlock Desk workspaces."""
+	"""Cashiers must not carry Sales User / manager roles that unlock Desk workspaces.
+
+	Skip users who also have System Manager / KQS Store Manager / Stock Manager /
+	etc. — business owners sometimes carry KQS Cashier by mistake; migrate must
+	not strip their Stock Manager (needed for Stock Reconciliation).
+	"""
 	cashiers = frappe.get_all(
 		"Has Role",
 		filters={"role": ROLE, "parenttype": "User"},
@@ -169,6 +183,8 @@ def _strip_forbidden_cashier_roles():
 	)
 	for email in cashiers:
 		user = frappe.get_doc("User", email)
+		if _is_desk_override_user(user):
+			continue
 		changed = False
 		for row in list(user.roles):
 			if row.role in FORBIDDEN_EXTRA_CASHIER_ROLES:
@@ -185,7 +201,10 @@ def _strip_forbidden_cashier_roles():
 
 
 def _apply_cashier_blocked_modules():
-	"""Keep cashiers on POS — no Stock/Selling sidebars on Desk."""
+	"""Keep cashiers on POS — no Stock/Selling sidebars on Desk.
+
+	Do not block modules for owners/managers who also have KQS Cashier.
+	"""
 	cashiers = frappe.get_all(
 		"Has Role",
 		filters={"role": ROLE, "parenttype": "User"},
@@ -193,6 +212,8 @@ def _apply_cashier_blocked_modules():
 	)
 	for email in cashiers:
 		user = frappe.get_doc("User", email)
+		if _is_desk_override_user(user):
+			continue
 		user.set("block_modules", [])
 		for module in CASHIER_BLOCKED_MODULES:
 			user.append("block_modules", {"module": module})

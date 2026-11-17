@@ -1,5 +1,5 @@
 # Copyright (c) 2026, KQS
-"""Till cashup extras — layby + account money that ERPNext closing omits."""
+"""Till cashup extras — layby + account money; sales net of change/credit/points."""
 
 from __future__ import annotations
 
@@ -11,18 +11,24 @@ import frappe
 from frappe.utils import flt, get_datetime, now_datetime
 
 from kqs_retail.utils.ar_payment import is_real_money_mode
+from kqs_retail.utils.customer_account import is_account_sale_mode
 from kqs_retail.utils.store_credit import is_store_credit_mode
 
 AR_COLLECTION_REMARK = "KQS POS account payment collection"
 LAYBY_REFUND_REMARK_PREFIX = "Layby cancel refund"
 BREAKDOWN_FIELD = "kqs_till_breakdown"
+CASH_MODE_CANDIDATES = ("Cash",)
+
+
+def _is_cash_mode(mode: str | None) -> bool:
+	if not mode:
+		return False
+	return mode.strip() in CASH_MODE_CANDIDATES or mode.strip().lower() == "cash"
 
 
 def _add(bucket: dict[str, float], mode: str | None, amount: float) -> None:
 	mode_key = (mode or "").strip() or "Cash"
-	if not is_real_money_mode(mode_key):
-		return
-	if is_store_credit_mode(mode_key):
+	if abs(flt(amount)) < 0.0001:
 		return
 	bucket[mode_key] = flt(bucket.get(mode_key, 0) + amount)
 
@@ -55,7 +61,10 @@ def _sum_layby_payments(pos_profile: str, company: str, start, end) -> dict[str,
 	)
 	out: dict[str, float] = {}
 	for row in rows:
-		_add(out, row.mode_of_payment, flt(row.amount))
+		mode = row.mode_of_payment
+		if not is_real_money_mode(mode):
+			continue
+		_add(out, mode, flt(row.amount))
 	return out
 
 
@@ -94,7 +103,10 @@ def _sum_payment_entries(
 	)
 	out: dict[str, float] = {}
 	for row in rows:
-		_add(out, row.mode_of_payment, flt(row.paid_amount))
+		mode = row.mode_of_payment
+		if not is_real_money_mode(mode):
+			continue
+		_add(out, mode, flt(row.paid_amount))
 	return out
 
 
@@ -114,34 +126,133 @@ def _layby_completion_invoice_names(invoice_names: list[str]) -> set[str]:
 	return {row.sales_invoice for row in linked if row.sales_invoice}
 
 
-def _sum_sales_payments_from_closing(closing_doc) -> dict[str, float]:
-	"""Real-money tender from invoices on this closing, excluding layby-completion SIs."""
+def _allocate_invoice_money(parenttype: str, name: str) -> dict:
+	"""
+	Split one invoice into:
+	- sales_by_mode: real money that stayed (tender minus change)
+	- credit: sold on account / On Account
+	- points: store credit / loyalty
+	"""
+	fields = ["grand_total", "is_return", "change_amount", "paid_amount"]
+	inv = frappe.db.get_value(parenttype, name, fields, as_dict=True)
+	if not inv:
+		return {"sales_by_mode": {}, "credit": 0.0, "points": 0.0, "grand": 0.0}
+
+	pays = frappe.get_all(
+		"Sales Invoice Payment",
+		filters={"parent": name, "parenttype": parenttype},
+		fields=["mode_of_payment", "amount"],
+	)
+
+	credit = 0.0
+	points = 0.0
+	real_rows: list[tuple[str, float]] = []
+	for pay in pays:
+		mode = (pay.mode_of_payment or "").strip() or "Cash"
+		amt = flt(pay.amount)
+		if is_account_sale_mode(mode):
+			credit += amt
+		elif is_store_credit_mode(mode):
+			points += amt
+		elif is_real_money_mode(mode):
+			real_rows.append((mode, amt))
+
+	grand = flt(inv.grand_total)
+	change = flt(inv.change_amount)
+
+	# Returns: money leaves the till — keep signed real-money amounts (usually negative).
+	if cint_is_return(inv.is_return):
+		sales_by_mode: dict[str, float] = {}
+		for mode, amt in real_rows:
+			_add(sales_by_mode, mode, amt)
+		return {
+			"sales_by_mode": sales_by_mode,
+			"credit": credit,
+			"points": points,
+			"grand": grand,
+		}
+
+	# Normal sale: tender often includes change. Only count money that stayed.
+	tendered = sum(amt for _, amt in real_rows)
+	due_real = flt(grand - credit - points)
+	# Guard: due_real cannot exceed tendered; cannot be negative for a normal sale.
+	if due_real < 0:
+		due_real = 0.0
+	if tendered <= 0.0001:
+		return {"sales_by_mode": {}, "credit": credit, "points": points, "grand": grand}
+
+	# Prefer ERPNext change_amount against Cash; else scale all real modes.
+	sales_by_mode = {}
+	if change > 0.0001 and abs(tendered - change - due_real) <= 0.05:
+		remaining_change = change
+		for mode, amt in real_rows:
+			kept = amt
+			if remaining_change > 0 and _is_cash_mode(mode):
+				deduct = min(kept, remaining_change)
+				kept = flt(kept - deduct)
+				remaining_change = flt(remaining_change - deduct)
+			_add(sales_by_mode, mode, kept)
+	elif abs(tendered - due_real) <= 0.05:
+		for mode, amt in real_rows:
+			_add(sales_by_mode, mode, amt)
+	else:
+		# Scale tendered modes down to the amount actually owed in real money.
+		scale = due_real / tendered if tendered else 0
+		for mode, amt in real_rows:
+			_add(sales_by_mode, mode, flt(amt * scale))
+
+	return {
+		"sales_by_mode": sales_by_mode,
+		"credit": credit,
+		"points": points,
+		"grand": grand,
+	}
+
+
+def cint_is_return(value) -> bool:
+	try:
+		return int(value or 0) == 1
+	except (TypeError, ValueError):
+		return bool(value)
+
+
+def _sum_sales_from_closing(closing_doc) -> dict:
+	"""Real-money sales (net of change), plus credit/points totals."""
 	pos_names = [row.pos_invoice for row in (closing_doc.get("pos_invoices") or []) if row.pos_invoice]
 	si_names = [
 		row.sales_invoice for row in (closing_doc.get("sales_invoices") or []) if row.sales_invoice
 	]
 	skip = _layby_completion_invoice_names(si_names + pos_names)
-	out: dict[str, float] = {}
+
+	sales_by_mode: dict[str, float] = {}
+	credit_total = 0.0
+	points_total = 0.0
+	goods_total = 0.0
 
 	def _consume(parenttype: str, names: list[str]) -> None:
+		nonlocal credit_total, points_total, goods_total
 		for name in names:
 			if name in skip:
 				continue
-			pays = frappe.get_all(
-				"Sales Invoice Payment",
-				filters={"parent": name, "parenttype": parenttype},
-				fields=["mode_of_payment", "amount"],
-			)
-			for pay in pays:
-				_add(out, pay.mode_of_payment, flt(pay.amount))
+			part = _allocate_invoice_money(parenttype, name)
+			for mode, amt in (part.get("sales_by_mode") or {}).items():
+				_add(sales_by_mode, mode, amt)
+			credit_total = flt(credit_total + part.get("credit", 0))
+			points_total = flt(points_total + part.get("points", 0))
+			goods_total = flt(goods_total + part.get("grand", 0))
 
 	_consume("POS Invoice", pos_names)
 	_consume("Sales Invoice", si_names)
-	return out
+	return {
+		"sales_by_mode": sales_by_mode,
+		"credit_total": credit_total,
+		"points_total": points_total,
+		"goods_total": goods_total,
+	}
 
 
 def build_till_breakdown(opening, closing_doc) -> dict:
-	"""Return sales / layby / account / refunds / expected by mode for this closing."""
+	"""Plain till picture: sales kept, credit owed, layby, account, refunds — by mode."""
 	start, end = _session_bounds(opening, closing_doc.period_end_date)
 	company = closing_doc.company or opening.company
 	pos_profile = closing_doc.pos_profile or opening.pos_profile
@@ -153,7 +264,8 @@ def build_till_breakdown(opening, closing_doc) -> dict:
 		if mode:
 			opening_by_mode[mode] = flt(row.opening_amount)
 
-	sales = _sum_sales_payments_from_closing(closing_doc)
+	sales_info = _sum_sales_from_closing(closing_doc)
+	sales = sales_info["sales_by_mode"]
 	layby = _sum_layby_payments(pos_profile, company, start, end)
 	account = _sum_payment_entries(
 		company=company,
@@ -184,6 +296,7 @@ def build_till_breakdown(opening, closing_doc) -> dict:
 
 	rows = []
 	totals = defaultdict(float)
+	cash_in_till = 0.0
 	for mode in modes:
 		open_amt = flt(opening_by_mode.get(mode))
 		sale = flt(sales.get(mode))
@@ -200,6 +313,7 @@ def build_till_breakdown(opening, closing_doc) -> dict:
 				"account": acc,
 				"refunds": ref,
 				"expected": expected,
+				"is_cash": _is_cash_mode(mode),
 			}
 		)
 		totals["opening"] += open_amt
@@ -208,6 +322,15 @@ def build_till_breakdown(opening, closing_doc) -> dict:
 		totals["account"] += acc
 		totals["refunds"] += ref
 		totals["expected"] += expected
+		if _is_cash_mode(mode):
+			cash_in_till += expected
+
+	totals["credit"] = flt(sales_info["credit_total"])
+	totals["points"] = flt(sales_info["points_total"])
+	totals["goods"] = flt(sales_info["goods_total"])
+	totals["cash_in_till"] = flt(cash_in_till)
+	# All real money taken (cash + bank + mpesa + …), not only drawer cash.
+	totals["money_received"] = flt(totals["sales"] + totals["layby"] + totals["account"] - totals["refunds"])
 
 	return {
 		"period_start": str(start),
@@ -220,13 +343,18 @@ def build_till_breakdown(opening, closing_doc) -> dict:
 		"account_total": flt(totals["account"]),
 		"refunds_total": flt(totals["refunds"]),
 		"sales_total": flt(totals["sales"]),
+		"credit_total": flt(totals["credit"]),
+		"points_total": flt(totals["points"]),
+		"cash_in_till": flt(totals["cash_in_till"]),
+		"money_received": flt(totals["money_received"]),
 	}
 
 
 def apply_till_extras_to_closing(doc, *, persist_breakdown: bool = True) -> dict:
 	"""
-	Rewrite payment_reconciliation.expected_amount so counted cash matches the drawer:
-	opening + POS sales + layby + account collections − till refunds.
+	Rewrite payment_reconciliation.expected_amount:
+	opening + sales(kept) + layby + account − refunds
+	(excludes credit sales, store credit/points, and cash change).
 	"""
 	if not doc.pos_opening_entry:
 		return {}
@@ -255,6 +383,13 @@ def apply_till_extras_to_closing(doc, *, persist_breakdown: bool = True) -> dict
 		mode = pay.mode_of_payment
 		if not mode or mode not in by_mode:
 			continue
+		# Never put On Account / Store Credit into expected drawer money.
+		if is_account_sale_mode(mode) or is_store_credit_mode(mode):
+			pay.expected_amount = flt(pay.opening_amount)
+			if pay.closing_amount in (None, ""):
+				pay.closing_amount = pay.expected_amount
+			pay.difference = flt(flt(pay.closing_amount) - flt(pay.expected_amount))
+			continue
 		row = by_mode[mode]
 		pay.expected_amount = flt(row["expected"])
 		if pay.closing_amount in (None, ""):
@@ -269,16 +404,16 @@ def apply_till_extras_to_closing(doc, *, persist_breakdown: bool = True) -> dict
 def _apply_summary_fields(doc, breakdown: dict) -> None:
 	"""Currency fields safe for print formats (no JSON parse in Jinja sandbox)."""
 	totals = breakdown.get("totals") or {}
-	sales = flt(totals.get("sales"))
-	layby = flt(totals.get("layby"))
-	account = flt(totals.get("account"))
-	refunds = flt(totals.get("refunds"))
 	mapping = {
-		"kqs_sales_tender": sales,
-		"kqs_layby_received": layby,
-		"kqs_account_collected": account,
-		"kqs_till_refunds": refunds,
-		"kqs_money_in_till": flt(sales + layby + account - refunds),
+		"kqs_sales_tender": flt(totals.get("sales")),
+		"kqs_layby_received": flt(totals.get("layby")),
+		"kqs_account_collected": flt(totals.get("account")),
+		"kqs_till_refunds": flt(totals.get("refunds")),
+		"kqs_sold_on_credit": flt(totals.get("credit")),
+		"kqs_points_redeemed": flt(totals.get("points")),
+		"kqs_cash_in_till": flt(totals.get("cash_in_till")),
+		# Total of all real money received (cash+bank+mpesa…); label clarified on receipt.
+		"kqs_money_in_till": flt(totals.get("money_received")),
 	}
 	meta = frappe.get_meta("POS Closing Entry")
 	for fieldname, value in mapping.items():
@@ -306,19 +441,7 @@ def _store_breakdown(doc, breakdown: dict, *, persist: bool = True) -> None:
 
 
 def get_breakdown_for_doc(doc) -> dict:
-	"""Load stored breakdown or rebuild (print / UI)."""
-	raw = None
-	if hasattr(doc, BREAKDOWN_FIELD):
-		raw = doc.get(BREAKDOWN_FIELD)
-	if not raw and doc.name and frappe.db.has_column("POS Closing Entry", BREAKDOWN_FIELD):
-		raw = frappe.db.get_value("POS Closing Entry", doc.name, BREAKDOWN_FIELD)
-	if raw:
-		try:
-			data = json.loads(raw)
-			if isinstance(data, dict) and data.get("rows") is not None:
-				return data
-		except (TypeError, ValueError, json.JSONDecodeError):
-			pass
+	"""Always rebuild so change/credit logic stays current for reprints."""
 	if not doc.pos_opening_entry:
 		return {"rows": [], "totals": {}}
 	opening = frappe.get_doc("POS Opening Entry", doc.pos_opening_entry)

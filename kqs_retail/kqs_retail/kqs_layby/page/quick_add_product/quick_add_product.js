@@ -24,7 +24,7 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 			{
 				fieldtype: "Section Break",
 				description: __(
-					"Create catalog items with variants. Opening stock is received into the selected warehouse; use Assign to Branch to move stock to stores later."
+					"Create catalog items with variants. Opening quantity (1 or more) is required on every row and is received into the branch you select below — no need to Assign afterward if that branch is the final home."
 				),
 			},
 			{ fieldname: "bulk_import_banner", fieldtype: "HTML" },
@@ -73,8 +73,11 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 				fieldname: "warehouse",
 				fieldtype: "Link",
 				options: "Warehouse",
-				label: __("Receive stock into"),
-				description: __("Default is Central. Opening quantities below are received into this warehouse."),
+				label: __("Receive stock into (branch)"),
+				description: __(
+					"Required. Opening quantities are received directly into this branch — pick the store that should hold the stock (not assumed Central)."
+				),
+				reqd: 1,
 				get_query() {
 					return { query: "kqs_retail.api.stock_transfer.kqs_warehouse_query" };
 				},
@@ -981,23 +984,63 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 			callback(r) {
 				if (r.exc) return;
 				const defaults = r.message || {};
-				if (defaults.warehouse) {
-					form.set_value("warehouse", defaults.warehouse);
-				} else {
-					frappe.call({
-						method: "kqs_retail.api.stock_transfer.get_transfer_defaults",
-						callback(r2) {
-							if (r2.exc) return;
-							const wh = r2.message?.source_warehouse || r2.message?.warehouse;
-							if (wh) form.set_value("warehouse", wh);
-						},
-					});
-				}
 				if (defaults.stock_uom) {
 					form.set_value("stock_uom", defaults.stock_uom);
 				}
+				// Never auto-pick Central — ask which branch receives opening stock.
+				if (!cstr(form.get_value("warehouse") || "").trim()) {
+					prompt_receive_warehouse();
+				}
 			},
 		});
+	}
+
+	function cstr(v) {
+		return v == null ? "" : String(v);
+	}
+
+	function prompt_receive_warehouse() {
+		let remembered = "";
+		try {
+			remembered = localStorage.getItem("kqs_last_receive_warehouse") || "";
+		} catch (e) {
+			/* ignore */
+		}
+		const d = new frappe.ui.Dialog({
+			title: __("Which branch receives opening stock?"),
+			fields: [
+				{
+					fieldname: "warehouse",
+					fieldtype: "Link",
+					options: "Warehouse",
+					label: __("Receive stock into (branch)"),
+					reqd: 1,
+					default: remembered,
+					description: __(
+						"New products’ opening qty land here immediately — same as receiving then assigning, in one step. Choose the store carefully."
+					),
+					get_query() {
+						return { query: "kqs_retail.api.stock_transfer.kqs_warehouse_query" };
+					},
+				},
+			],
+			primary_action_label: __("Use this branch"),
+			primary_action(values) {
+				const wh = cstr(values.warehouse || "").trim();
+				if (!wh) {
+					frappe.msgprint(__("Select a warehouse / branch."));
+					return;
+				}
+				try {
+					localStorage.setItem("kqs_last_receive_warehouse", wh);
+				} catch (e) {
+					/* ignore */
+				}
+				form.set_value("warehouse", wh);
+				d.hide();
+			},
+		});
+		d.show();
 	}
 
 	function toggle_field_visibility(fieldname, visible) {
@@ -1318,12 +1361,16 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 							<td>${frappe.utils.escape_html(form.get_value("item_name") || __("Product"))}</td>
 							<td><input type="text" class="form-control input-sm kqs-barcode" placeholder="${__("Barcode")}"
 								value="${frappe.utils.escape_html(saved.barcode || "")}" style="min-width:120px;" /></td>
-							<td><input type="number" min="0" step="1" class="form-control input-sm kqs-qty" placeholder="${__("Qty")}"
-								value="${frappe.utils.escape_html(saved.qty || "")}" style="width:100px;" /></td>
+							<td><input type="number" min="1" step="1" class="form-control input-sm kqs-qty" placeholder="${__(
+								"Qty (min 1)"
+							)}"
+								value="${frappe.utils.escape_html(saved.qty || "")}" style="width:100px;" required /></td>
 						</tr>
 					</tbody>
 				</table>
-				<p class="text-muted small mb-0">${__("Price is set above. Opening qty is optional.")}</p>
+				<p class="text-muted small mb-0">${__(
+					"Price is set above. Opening qty is required (minimum 1) — without it the product will not show on Assign."
+				)}</p>
 			`);
 			return;
 		}
@@ -1377,8 +1424,10 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 						value="${frappe.utils.escape_html(rate_value)}" style="width:90px;" /></td>
 					<td><input type="text" class="form-control input-sm kqs-barcode" placeholder="${__("Barcode")}"
 						value="${frappe.utils.escape_html(row.barcode || "")}" style="min-width:110px;" /></td>
-					<td><input type="number" min="0" step="1" class="form-control input-sm kqs-qty" placeholder="${__("Qty")}"
-						value="${frappe.utils.escape_html(row.qty || "")}" style="width:80px;" /></td>
+					<td><input type="number" min="1" step="1" class="form-control input-sm kqs-qty" placeholder="${__(
+						"Qty (min 1)"
+					)}"
+						value="${frappe.utils.escape_html(row.qty || "")}" style="width:80px;" required /></td>
 					<td class="text-right" style="width:40px;">
 						<button type="button" class="btn btn-xs btn-default kqs-remove-variant" data-idx="${idx}" title="${__(
 							"Remove"
@@ -1444,10 +1493,6 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 			barcode: row.barcode || "",
 			qty: row.qty ? parseFloat(row.qty) || 0 : 0,
 		}));
-	}
-
-	function has_any_qty(matrix) {
-		return matrix.some((row) => (parseFloat(row.qty) || 0) > 0);
 	}
 
 	function clear_product_form() {
@@ -1529,8 +1574,18 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 			frappe.msgprint(__("Add variant details before saving."));
 			return;
 		}
-		if (has_any_qty(variant_matrix) && !form.get_value("warehouse")) {
-			frappe.msgprint(__("Select a warehouse when entering opening quantities."));
+		if (!form.get_value("warehouse")) {
+			frappe.msgprint(__("Select a warehouse — opening stock is received there."));
+			return;
+		}
+		const missing_qty = variant_matrix.filter((row) => (parseFloat(row.qty) || 0) < 1);
+		if (missing_qty.length) {
+			frappe.msgprint(
+				__(
+					"Enter opening quantity of at least 1 on every row ({0} row(s) missing). Stock will not appear on Assign without it.",
+					[missing_qty.length]
+				)
+			);
 			return;
 		}
 		if (!form.get_value("stock_uom")) {
@@ -1563,7 +1618,10 @@ frappe.pages["quick-add-product"].on_page_load = function (wrapper) {
 				save_in_progress = false;
 				if (!r.exc && r.message) {
 					frappe.show_alert({
-						message: __("Product {0} created.", [r.message.template]),
+						message: __(
+							"Product {0} created with opening stock at {1}.",
+							[r.message.template, form.get_value("warehouse") || __("warehouse")]
+						),
 						indicator: "green",
 					});
 					clear_product_form();

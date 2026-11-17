@@ -28,9 +28,13 @@ from kqs_retail.utils.warehouses import (
 def get_receive_defaults():
 	assert_stock_manager()
 	company = get_default_company()
+	from kqs_retail.utils.warehouses import list_kqs_warehouse_choices
+
 	return {
 		"company": company,
-		"warehouse": _default_central_warehouse(company),
+		"warehouse": "",
+		"central_warehouse": _default_central_warehouse(company),
+		"warehouses": list_kqs_warehouse_choices(company),
 	}
 
 
@@ -222,7 +226,12 @@ def receive_stock(warehouse: str, items_json: str, company: str = ""):
 			frappe.throw(_("Item {0} was not found.").format(item_code))
 		item = frappe.get_cached_doc("Item", item_code)
 		if item.has_variants:
-			frappe.throw(_("Receive stock on variant SKUs, not template {0}.").format(item_code))
+			from kqs_retail.api.product_setup import _resolve_stockable_item
+
+			item_code = _resolve_stockable_item(item_code)
+			item = frappe.get_cached_doc("Item", item_code)
+			if item.has_variants:
+				frappe.throw(_("Receive stock on variant SKUs, not template {0}.").format(item_code))
 		if not item.is_stock_item:
 			frappe.throw(_("Item {0} is not a stock item.").format(item_code))
 		if item.disabled:
@@ -231,13 +240,21 @@ def receive_stock(warehouse: str, items_json: str, company: str = ""):
 		rate = flt(row.get("rate"))
 		if rate <= 0:
 			rate = flt(item.standard_rate) or 1
-		lines.append({"item_code": item_code, "qty": qty, "rate": rate})
+		line = {"item_code": item_code, "qty": qty, "rate": rate}
+		idem = cstr(row.get("idempotency_key") or "").strip()
+		if idem:
+			line["idempotency_key"] = idem
+		lines.append(line)
 
 	if not lines:
 		frappe.throw(_("Enter quantity for at least one item."))
 
 	stock_entry = _receipt_stock_batch(lines, warehouse)
-	return {"stock_entry": stock_entry, "warehouse": warehouse}
+	return {
+		"stock_entry": stock_entry,
+		"warehouse": warehouse,
+		"item_codes": [cstr(x.get("item_code")) for x in lines],
+	}
 
 
 def _on_hand(item_code: str, warehouse: str) -> float:

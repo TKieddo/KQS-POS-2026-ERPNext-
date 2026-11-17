@@ -67,13 +67,13 @@ frappe.provide("kqs_retail.item");
 		}
 		frappe.confirm(
 			__(
-				"Delete {0} item(s) from the <b>entire catalog</b> (all branches)?<br><br>{1}<br><br>"
-				"This zeros stock at every warehouse and removes the SKU from POS everywhere. "
-				"If the item has sales history it is archived as DEL-… so you can recreate the same "
-				"style with <b>empty</b> stock — it does not hide-and-resurface old quantities. "
-				"Submitted invoices are not cancelled.<br><br>"
-				"To clear stock at one store only, use <b>Edit Product → Remove from branch</b> "
-				"(transfers sellable qty back to Central).",
+				"Delete {0} item(s) from the <b>entire catalog</b> (all branches)?<br><br>{1}<br><br>" +
+					"This zeros stock at every warehouse and removes the SKU from POS everywhere. " +
+					"If the item has sales history it is archived as DEL-… so you can recreate the same " +
+					"style with <b>empty</b> stock — it does not hide-and-resurface old quantities. " +
+					"Submitted invoices are not cancelled.<br><br>" +
+					"To clear stock at one store only, use <b>Edit Product → Remove from branch</b> " +
+					"(transfers sellable qty back to Central).",
 				[codes.length, preview]
 			),
 			() => {

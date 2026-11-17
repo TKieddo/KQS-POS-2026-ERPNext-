@@ -26,10 +26,11 @@ Fields:
 
 | Field | Notes |
 |-------|--------|
-| AI Provider | `openai`, `deepseek`, or `qwen` |
-| AI API Key | Provider secret |
-| AI Base URL | Optional override |
-| AI Model | Optional (e.g. `gpt-4o`, `qwen-vl-max`) |
+| AI Provider | `openai`, `deepseek`, or `qwen` — switch anytime |
+| OpenAI / DeepSeek / Qwen API Key | **Separate saved keys** — switching provider does not erase the others |
+| Legacy AI API Key | Fallback only if the active provider’s key is empty |
+| AI Base URL | Optional override (leave blank for defaults) |
+| AI Model | Optional override for the **active** provider. Leave blank for defaults: `gpt-4o` / `deepseek-flash` / `qwen-vl-max` |
 
 Without a key, **CSV still works**; paper extract stays disabled.
 
@@ -66,25 +67,70 @@ The downloaded sample template uses **integer qty** (`3`, not `x3`). `x3` only a
 
 - Parsing CSV or AI extract **creates a draft** (`KQS Stock Import Batch`).
 - Edits **auto-save** every few seconds; **Save draft now** forces a save.
-- Top of the page lists **Open drafts** → **Continue** after a browser reload.
+- Top of the page lists **Open drafts** → **Continue** after a browser reload, or **Delete** to discard and start fresh.
+- Menu → **New draft** clears the current preview (server drafts remain until you Delete them).
 - **Approve & publish** moves valid rows live (create / add variant / receive). Unresolved **Needs match** rows stay in the draft.
+
+## Publish retries (no double qty)
+
+- Each successful draft row is marked **Done / applied**. Approve again **skips** those rows.
+- Material Receipts from bulk import store a durable key `KQSBI|{batch}|{row}|{item}` on Stock Entry remarks. If stock already landed but the draft mark was lost, retry **finds that receipt and does not receive again**.
+- Autosave cannot clear Done markers. Overlapping Approve clicks are blocked (one publish at a time per draft).
+- **Hide published (Done) rows** keeps the fix list focused on what still needs work.
+- A **new** import batch (or Receive Stock / Assign) for the same SKU is a separate receive — that is intentional.
+
+## Where stock appears / finding Items
+
+- Stock lands only in **Receive into (branch)** chosen on the page. Other branches show 0 until **Assign to Branch**.
+- If Item list is filtered to **Stock at {branch}** and that branch has no Bin qty, the list looks empty even though the Item exists — clear the filter or search **All**, and search by **style number** (e.g. `6308`), not color name alone.
+- After publish, the log lists **SKU / style / warehouse** with **Open Item** links.
+
+## Manual rows (missed lines)
+
+In the preview toolbar:
+
+- **Add product row** — blank line for a style the AI/CSV missed entirely.
+- **Add color/size of last style** / per-row **+ Color/size** — copies name, style, price, category; you fill the missing color/size/qty.
 
 ## Paper columns
 
 | Column | Meaning | Example |
 |--------|---------|---------|
-| Name | Product line → Item name | Soviet, Sportbag |
-| Style | Style number → template SKU | Boca L, Y Superboss |
-| Color | Variant | blackmono, Navy |
-| Qty | Quantity | `3`, or paper notes `x3` / `1box` (parsed to a number) |
+| Name | Product line → Item name | T-Shirt, Sweater |
+| Style | Style number → template SKU | PD2-7056, J0492 |
+| Color | One Color attribute value | green, **white/black** (dual-tone = one value) |
+| Size + qty | Often several tokens on one line | see below |
+| Price | Often `> 70` | 70 |
 
-Ditto (`"` / `" "`) copies Name and/or Style from the row above.
+### Kids / footwear size formats
+
+Writers mix these on the same line; each token becomes its **own preview row**:
+
+| Paper | Size | Qty |
+|-------|------|-----|
+| `9-10/3` or `9/10/3` | 9-10 | 3 |
+| `(8/9)/2` or `8/9/2` | 8-9 | 2 |
+| `6/2` | 6 | 2 |
+| `8/9/2 9/10/1 10/11/2` | three rows | 2, 1, 2 |
+
+Bare `8/9` (no qty after) is treated as size label **8-9**, not size 8 qty 9.
+
+### Colors & attribute values on publish
+
+- Dual-tone colors (`white/black`, `Grey/DK Grey`) stay **one** Color value — not two products.
+- On **Approve & publish**, missing **Color** / **Size** attribute values are **created automatically** (`_ensure_attribute_value`). They are not rejected for being new.
+
+Ditto (`"` / `" "`) copies Name and/or Style from the row above. Crossed-out lines should be skipped by AI.
 
 ## Matching rules
 
-- **Auto-link** only when **both** name and style match an existing template.
-- Typos → **Needs match** — Accept, Search, or Create as new.
-- Never silently overwrite catalog names.
+- **Style number is the product identity.** If that style already exists as a catalog template, the row **auto-links** to it:
+  - same color/size already in catalog → **Add stock** (receive)
+  - new color/size → **Add variant** under that template
+  - Paper product names may differ (OCR) — style match is enough when the style hit is unique.
+- Multiple style format twins (`B 12345` / `B-12345` as different Items) → **Needs match** with **only those templates** (no unrelated fuzzy suggestions). Staff must **Use** existing, **Search**, or **Create as new**.
+- Fuzzy / prefix suggestions only when **no** style-equivalent template exists (raised similarity bar so junk products are not offered).
+- **Create as new** is always available when a match was suggested — with confirm if a style twin exists.
 
 ## AI categories + spelling (preview)
 

@@ -1,6 +1,7 @@
 # Copyright (c) 2026, KQS
 
 import json
+import re
 
 import frappe
 from frappe import _
@@ -37,8 +38,13 @@ except ImportError:
 @frappe.whitelist()
 def get_add_product_defaults():
 	company = get_default_company()
+	from kqs_retail.utils.warehouses import list_kqs_warehouse_choices
+
 	return {
-		"warehouse": _default_central_warehouse(company),
+		# Empty — Add Product prompts for branch; opening stock lands there directly.
+		"warehouse": "",
+		"central_warehouse": _default_central_warehouse(company),
+		"warehouses": list_kqs_warehouse_choices(company),
 		"stock_uom": get_default_stock_uom(),
 	}
 
@@ -186,9 +192,21 @@ def create_product_with_variants(
 	gallery = _parse_image_list(gallery_images)
 	attr_images = _parse_attribute_value_images(attribute_value_images)
 	company = get_default_company()
-	warehouse = central_warehouse or _default_central_warehouse(company)
-	if warehouse and not is_kqs_store_warehouse(warehouse, company):
+	warehouse = (central_warehouse or "").strip()
+	if not warehouse:
+		frappe.throw(
+			_("Select which warehouse / branch receives opening stock (Receive stock into).")
+		)
+	if not is_kqs_store_warehouse(warehouse, company):
 		frappe.throw(_("Select a valid KQS warehouse."))
+
+	# Opening qty is required — catalog-only create left stores with empty Assign lists.
+	for idx, row in enumerate(matrix, start=1):
+		qty = flt(row.get("qty") or opening_qty)
+		if qty < 1:
+			frappe.throw(
+				_("Opening quantity must be at least 1 on every row (row {0}).").format(idx)
+			)
 
 	template = frappe.get_doc(
 		{
@@ -210,46 +228,122 @@ def create_product_with_variants(
 	template.save(ignore_permissions=True)
 
 	created = []
+	line_results: list[dict] = []
+	last_stock_entry = None
 
-	if has_variants:
-		for row in matrix:
-			attrs = _row_attributes(row, attr_names)
-			variant = create_variant(template.name, attrs)
-			variant_code = (row.get("sku") or "").strip() or _default_variant_code(
-				template_code, attrs, attr_names
+	def _line_key(row: dict, code: str) -> str:
+		explicit = cstr(row.get("idempotency_key") or "").strip()
+		if explicit:
+			return explicit
+		batch = cstr(row.get("import_batch") or "").strip()
+		row_id = cstr(row.get("row_id") or "").strip()
+		if batch and row_id and code:
+			return make_bulk_import_receipt_key(batch, row_id, code)
+		return ""
+
+	def _receive_line(row: dict, code: str, qty: float, rate: float) -> str | None:
+		nonlocal last_stock_entry
+		key = _line_key(row, code)
+		existing = find_receipt_by_idempotency_key(key) if key else None
+		if existing:
+			last_stock_entry = existing
+			line_results.append(
+				{
+					"row_id": cstr(row.get("row_id") or ""),
+					"item_code": code,
+					"stock_entry": existing,
+					"skipped": 1,
+					"warehouse": warehouse,
+				}
 			)
-			variant_code = _normalize_item_code(variant_code)
-			_ensure_new_item_code(variant_code)
-			variant.item_code = variant_code
-			variant.item_name = _variant_item_name(item_name, attrs)
-			variant.standard_rate = flt(row.get("rate"))
+			return existing
+		se = _receipt_stock(code, warehouse, qty, rate, idempotency_key=key)
+		last_stock_entry = se
+		line_results.append(
+			{
+				"row_id": cstr(row.get("row_id") or ""),
+				"item_code": code,
+				"stock_entry": se,
+				"skipped": 0,
+				"warehouse": warehouse,
+			}
+		)
+		# Bulk import: persist each SKU so a later sibling failure cannot roll back stock.
+		if cstr(row.get("import_batch") or "").strip():
+			frappe.db.commit()
+		return se
+
+	try:
+		if has_variants:
+			for row in matrix:
+				attrs = _row_attributes(row, attr_names)
+				variant_code = (row.get("sku") or "").strip() or _default_variant_code(
+					template_code, attrs, attr_names
+				)
+				variant_code = _normalize_item_code(variant_code)
+				qty = flt(row.get("qty") or opening_qty)
+				rate = flt(row.get("rate") or 0)
+				# Existing SKU (e.g. CRJ-BLACK) → receive stock instead of failing
+				if frappe.db.exists("Item", variant_code):
+					if qty > 0:
+						_receive_line(row, variant_code, qty, rate)
+					continue
+				variant = create_variant(template.name, attrs)
+				variant.item_code = variant_code
+				variant.item_name = _variant_item_name(item_name, attrs)
+				variant.standard_rate = rate
+				if row.get("barcode"):
+					_set_item_barcode(variant, str(row["barcode"]).strip())
+				variant_image = (row.get("image") or "").strip() or _variant_image_from_attrs(
+					attrs, attr_names, attr_images
+				)
+				if variant_image:
+					variant.image = variant_image
+				try:
+					variant.insert(ignore_permissions=True)
+				except Exception as exc:
+					msg = cstr(exc)
+					if (
+						"already exists" in msg.lower() or isinstance(exc, frappe.DuplicateEntryError)
+					) and frappe.db.exists("Item", variant_code):
+						if qty > 0:
+							_receive_line(row, variant_code, qty, rate)
+						continue
+					raise
+				created.append(variant.name)
+				_receive_line(row, variant.name, qty, rate or flt(variant.standard_rate or 0))
+		else:
+			row = matrix[0]
+			template.standard_rate = flt(row.get("rate"))
 			if row.get("barcode"):
-				_set_item_barcode(variant, str(row["barcode"]).strip())
-			variant_image = (row.get("image") or "").strip() or _variant_image_from_attrs(
-				attrs, attr_names, attr_images
-			)
-			if variant_image:
-				variant.image = variant_image
-			variant.insert(ignore_permissions=True)
-			created.append(variant.name)
+				_set_item_barcode(template, str(row["barcode"]).strip())
+			row_image = (row.get("image") or "").strip()
+			if row_image:
+				template.image = row_image
+			template.save(ignore_permissions=True)
+			created.append(template.name)
 			qty = flt(row.get("qty") or opening_qty)
-			if qty > 0 and warehouse:
-				_receipt_stock(variant.name, warehouse, qty, flt(row.get("rate") or 0))
-	else:
-		row = matrix[0]
-		template.standard_rate = flt(row.get("rate"))
-		if row.get("barcode"):
-			_set_item_barcode(template, str(row["barcode"]).strip())
-		row_image = (row.get("image") or "").strip()
-		if row_image:
-			template.image = row_image
-		template.save(ignore_permissions=True)
-		created.append(template.name)
-		qty = flt(row.get("qty") or opening_qty)
-		if qty > 0 and warehouse:
-			_receipt_stock(template.name, warehouse, qty, flt(row.get("rate") or 0))
+			_receive_line(row, template.name, qty, flt(row.get("rate") or 0))
+	except Exception:
+		# Partial successes must be recoverable by bulk import mark-applied.
+		frappe.flags.kqs_create_partial = {
+			"template": template.name,
+			"variants": list(created),
+			"style_code": template_code,
+			"warehouse": warehouse,
+			"stock_entry": last_stock_entry,
+			"line_results": list(line_results),
+		}
+		raise
 
-	return {"template": template.name, "variants": created, "style_code": template_code}
+	return {
+		"template": template.name,
+		"variants": created,
+		"style_code": template_code,
+		"warehouse": warehouse,
+		"stock_entry": last_stock_entry,
+		"line_results": line_results,
+	}
 
 
 @frappe.whitelist()
@@ -301,7 +395,7 @@ def list_product_category_sections():
 
 
 def _leaf_only_category(name: str) -> list[dict]:
-	"""Single selectable category (e.g. Unisex) with no subgroups."""
+	"""Single selectable category when a section is marked leaf (no subgroups)."""
 	return [
 		{
 			"name": name,
@@ -472,20 +566,286 @@ def _parse_variant_attributes(variant_attributes: str, has_variants: int) -> lis
 	return names
 
 
+def _display_attribute_value(value: str) -> str:
+	"""Stable Title Case for new attribute values (khaki → Khaki, dark brown → Dark Brown)."""
+	text = cstr(value).strip()
+	if not text:
+		return ""
+	parts = []
+	for chunk in text.split("/"):
+		words = []
+		for w in chunk.strip().split():
+			if not w:
+				continue
+			# Keep short all-caps tokens (e.g. "N/A") as-is; otherwise Title Case
+			if len(w) <= 3 and w.isupper():
+				words.append(w)
+			else:
+				words.append(w[:1].upper() + w[1:].lower())
+		parts.append(" ".join(words))
+	return "/".join(parts)
+
+
+def _canonical_attribute_value(attribute: str, value: str) -> str | None:
+	"""Return the exact Item Attribute Value spelling if it already exists (any casing)."""
+	value = cstr(value).strip()
+	attribute = cstr(attribute).strip()
+	if not value or not attribute:
+		return None
+	target = _norm_text(value)
+	for existing in frappe.get_all(
+		"Item Attribute Value",
+		filters={"parent": attribute, "parenttype": "Item Attribute"},
+		pluck="attribute_value",
+	):
+		if _norm_text(existing) == target:
+			return cstr(existing).strip()
+	return None
+
+
+def _ensure_attribute_value(attribute: str, value: str) -> str:
+	"""
+	Ensure an Item Attribute value exists. Returns the canonical spelling to use on variants
+	(existing catalog casing if present, otherwise Title Case for new values).
+	Never requires staff to pre-add colours under Stock → Item Attribute.
+	"""
+	value = cstr(value).strip()
+	attribute = cstr(attribute).strip()
+	if not value or not attribute:
+		return value
+
+	existing = _canonical_attribute_value(attribute, value)
+	if existing:
+		return existing
+
+	display = _display_attribute_value(value)
+
+	if not frappe.db.exists("Item Attribute", attribute):
+		frappe.get_doc(
+			{
+				"doctype": "Item Attribute",
+				"attribute_name": attribute,
+				"item_attribute_values": [
+					{
+						"attribute_value": display,
+						"abbr": _unique_abbr_for_new_attribute(display),
+					}
+				],
+			}
+		).insert(ignore_permissions=True)
+		return display
+
+	_repair_duplicate_attribute_abbrs(attribute)
+	# Re-check after repair (another request may have added it)
+	existing = _canonical_attribute_value(attribute, display)
+	if existing:
+		return existing
+
+	used = {
+		cstr(r.abbr).strip().upper()
+		for r in frappe.get_all(
+			"Item Attribute Value",
+			filters={"parent": attribute, "parenttype": "Item Attribute"},
+			fields=["abbr"],
+		)
+		if cstr(r.abbr).strip()
+	}
+	abbr = _unique_abbr_for_new_attribute(display, used)
+	try:
+		doc = frappe.get_doc("Item Attribute", attribute)
+		doc.append(
+			"item_attribute_values",
+			{"attribute_value": display, "abbr": abbr},
+		)
+		doc.flags.ignore_validate = True
+		doc.save(ignore_permissions=True)
+	except Exception:
+		try:
+			child = frappe.get_doc(
+				{
+					"doctype": "Item Attribute Value",
+					"parent": attribute,
+					"parenttype": "Item Attribute",
+					"parentfield": "item_attribute_values",
+					"attribute_value": display,
+					"abbr": abbr,
+				}
+			)
+			child.insert(ignore_permissions=True)
+		except Exception:
+			_insert_attribute_value_sql(attribute, display, abbr)
+		frappe.clear_cache(doctype="Item Attribute")
+
+	if not _attribute_has_value(attribute, display):
+		_insert_attribute_value_sql(attribute, display, abbr)
+		frappe.clear_cache(doctype="Item Attribute")
+
+	canonical = _canonical_attribute_value(attribute, display)
+	if not canonical:
+		frappe.throw(
+			_(
+				"Could not add {0} value {1} to Item Attribute {0}. Check Stock → Item Attribute for abbreviation conflicts."
+			).format(attribute, display)
+		)
+	return canonical
+
+
+def _attribute_has_value(attribute: str, value: str) -> bool:
+	return bool(_canonical_attribute_value(attribute, value))
+
+
+def _insert_attribute_value_sql(attribute: str, value: str, abbr: str) -> None:
+	"""Insert Item Attribute Value bypassing DocType validate (abbr collision legacy)."""
+	if _attribute_has_value(attribute, value):
+		return
+	used = {
+		cstr(a).strip().upper()
+		for a in frappe.get_all(
+			"Item Attribute Value",
+			filters={"parent": attribute, "parenttype": "Item Attribute"},
+			pluck="abbr",
+		)
+		if cstr(a).strip()
+	}
+	abbr = _unique_abbr_for_new_attribute(value, used)
+	idx = (
+		cint(
+			frappe.db.sql(
+				"""
+				SELECT COALESCE(MAX(idx), 0) FROM `tabItem Attribute Value`
+				WHERE parent=%s AND parenttype='Item Attribute'
+				""",
+				attribute,
+			)[0][0]
+		)
+		+ 1
+	)
+	name = frappe.generate_hash(length=10)
+	user = frappe.session.user if getattr(frappe, "session", None) else "Administrator"
+	now = frappe.utils.now()
+	frappe.db.sql(
+		"""
+		INSERT INTO `tabItem Attribute Value`
+			(name, creation, modified, modified_by, owner, docstatus,
+			 parent, parenttype, parentfield, idx, attribute_value, abbr)
+		VALUES
+			(%s, %s, %s, %s, %s, 0, %s, 'Item Attribute', 'item_attribute_values', %s, %s, %s)
+		""",
+		(name, now, now, user, user, attribute, idx, value, abbr),
+	)
+
+
+def _unique_abbr_for_new_attribute(value: str, used: set[str] | None = None) -> str:
+	used = {cstr(a).strip().upper() for a in (used or set()) if cstr(a).strip()}
+	clean = re.sub(r"[^A-Za-z0-9]", "", cstr(value).strip())
+	candidates = []
+	if clean:
+		for n in range(2, min(8, len(clean) + 1)):
+			candidates.append(clean[:n].upper())
+	words = re.findall(r"[A-Za-z0-9]+", cstr(value))
+	if words:
+		candidates.append("".join(w[0] for w in words)[:4].upper())
+	for cand in candidates:
+		if cand and cand not in used:
+			return cand
+	seed = (clean[:3] or "X").upper()
+	for i in range(1, 200):
+		cand = f"{seed}{i}"
+		if cand not in used:
+			return cand
+	return f"X{frappe.generate_hash(length=4).upper()}"
+
+
+def _repair_duplicate_attribute_abbrs(attribute: str) -> None:
+	if not attribute or not frappe.db.exists("Item Attribute", attribute):
+		return
+	doc = frappe.get_doc("Item Attribute", attribute)
+	seen: set[str] = set()
+	changed = False
+	for row in doc.item_attribute_values or []:
+		abbr = cstr(row.abbr).strip().upper()
+		val = cstr(row.attribute_value).strip()
+		if not val:
+			continue
+		if not abbr or abbr in seen:
+			new_abbr = _unique_abbr_for_new_attribute(val, seen)
+			if cstr(row.abbr).strip().upper() != new_abbr:
+				row.abbr = new_abbr
+				changed = True
+			abbr = new_abbr
+		seen.add(abbr)
+	if changed:
+		doc.flags.ignore_validate = True
+		doc.save(ignore_permissions=True)
+
+
+def _norm_text(value: str) -> str:
+	return re.sub(r"\s+", " ", cstr(value).strip().lower())
+
+
+def _apply_canonical_attrs_to_row(row: dict, canonical: dict) -> None:
+	"""Rewrite matrix row so create_variant receives exact Item Attribute spellings."""
+	if not canonical:
+		return
+	attrs = dict(row.get("attributes") or {})
+	attrs.update(canonical)
+	# Drop Color/Colour duplicates that disagree with template key
+	lower_canon = {cstr(k).lower(): v for k, v in canonical.items()}
+	cleaned = {}
+	for k, v in attrs.items():
+		kl = cstr(k).lower()
+		if kl in ("color", "colour") and ("colour" in lower_canon or "color" in lower_canon):
+			# Keep only keys present in canonical
+			if k in canonical:
+				cleaned[k] = canonical[k]
+			continue
+		cleaned[k] = canonical.get(k, v)
+	for k, v in canonical.items():
+		cleaned[k] = v
+	row["attributes"] = cleaned
+	for name, val in canonical.items():
+		nl = cstr(name).lower()
+		if nl in ("color", "colour"):
+			row["color"] = val
+		elif nl == "size":
+			row["size"] = val
+
+
 def _validate_matrix_attributes(matrix: list, attr_names: list[str]):
+	"""Auto-add missing attribute values and rewrite rows to canonical casing."""
+	for row in matrix:
+		attrs = _row_attributes(row, attr_names)
+		canonical: dict[str, str] = {}
+		for name in attr_names:
+			value = (attrs.get(name) or "").strip()
+			if not value:
+				frappe.throw(_("Each variant row needs a value for {0}.").format(name))
+			canonical[name] = _ensure_attribute_value(name, value)
+		_apply_canonical_attrs_to_row(row, canonical)
+
+	frappe.clear_cache(doctype="Item Attribute")
 	allowed = _attribute_value_map(attr_names)
 	for row in matrix:
 		attrs = _row_attributes(row, attr_names)
 		for name in attr_names:
 			value = (attrs.get(name) or "").strip()
-			if not value:
-				frappe.throw(_("Each variant row needs a value for {0}.").format(name))
 			valid = allowed.get(name, set())
-			if value not in valid:
+			valid_norm = {_norm_text(v): v for v in valid}
+			if _norm_text(value) in valid_norm:
+				# Force exact catalog spelling onto the row
+				_apply_canonical_attrs_to_row(row, {name: valid_norm[_norm_text(value)]})
+				continue
+			canonical_val = _ensure_attribute_value(name, value)
+			frappe.clear_cache(doctype="Item Attribute")
+			allowed = _attribute_value_map(attr_names)
+			_apply_canonical_attrs_to_row(row, {name: canonical_val})
+			valid = allowed.get(name, set())
+			valid_norm = {_norm_text(v): v for v in valid}
+			if _norm_text(canonical_val) not in valid_norm:
 				frappe.throw(
-					_("{0} value {1} is not defined on Item Attribute {0}. Add it under Stock → Item Attribute.").format(
-						name, value
-					)
+					_(
+						"{0} value {1} is not defined on Item Attribute {0}. Add it under Stock → Item Attribute."
+					).format(name, value)
 				)
 
 
@@ -631,21 +991,50 @@ def _ensure_item_attributes(names: list[str]):
 
 def _row_attributes(row: dict, attr_names: list[str] | None = None) -> dict:
 	if row.get("attributes"):
-		return {k: v for k, v in row["attributes"].items() if v}
+		raw = {k: v for k, v in row["attributes"].items() if v}
+		if attr_names:
+			return _remap_attrs_to_template_names(raw, attr_names)
+		return raw
 	attrs = {}
 	if attr_names:
 		for name in attr_names:
 			key = name.lower().replace(" ", "_")
 			if row.get(key):
 				attrs[name] = row[key]
+				continue
+			# Color/Colour aliases from flat draft fields
+			if name.lower() in ("color", "colour") and row.get("color"):
+				attrs[name] = row["color"]
+			elif name.lower() == "size" and row.get("size"):
+				attrs[name] = row["size"]
 		if attrs:
 			return attrs
-	# Legacy size/color keys
+	# Legacy size/color keys — prefer Colour when that attribute exists on the site
 	if row.get("size"):
 		attrs["Size"] = row["size"]
 	if row.get("color"):
-		attrs["Color"] = row["color"]
+		color_key = "Colour" if frappe.db.exists("Item Attribute", "Colour") else "Color"
+		attrs[color_key] = row["color"]
 	return attrs
+
+
+def _remap_attrs_to_template_names(attrs: dict, attr_names: list[str]) -> dict:
+	"""Map Color↔Colour (and Size) onto the names the template actually uses."""
+	out = {}
+	lower_map = {cstr(k).lower(): (k, v) for k, v in attrs.items() if v}
+	for name in attr_names:
+		nl = cstr(name).lower()
+		if nl in lower_map:
+			out[name] = lower_map[nl][1]
+			continue
+		if nl in ("color", "colour"):
+			for alias in ("colour", "color"):
+				if alias in lower_map:
+					out[name] = lower_map[alias][1]
+					break
+		elif nl == "size" and "size" in lower_map:
+			out[name] = lower_map["size"][1]
+	return out
 
 
 def _normalize_item_code(code: str) -> str:
@@ -671,46 +1060,181 @@ def _ensure_new_item_code(item_code: str):
 		frappe.throw(_("Item code {0} already exists.").format(item_code))
 
 
-def _receipt_stock(item_code: str, warehouse: str, qty: float, rate: float):
-	_receipt_stock_batch(
-		[{"item_code": item_code, "qty": qty, "rate": rate}],
+def make_bulk_import_receipt_key(batch_name: str, row_id: str, item_code: str) -> str:
+	"""Stable Stock Entry remarks key — same batch+row+SKU never receives twice."""
+	return "KQSBI|{0}|{1}|{2}".format(
+		cstr(batch_name or "").strip(),
+		cstr(row_id or "").strip(),
+		cstr(item_code or "").strip(),
+	)
+
+
+def find_receipt_by_idempotency_key(key: str) -> str | None:
+	"""Return submitted Material Receipt name if this import key already landed stock."""
+	key = cstr(key or "").strip()
+	if not key.startswith("KQSBI|"):
+		return None
+	# Match on remarks only — purpose/stock_entry_type field names vary by ERPNext version.
+	return frappe.db.get_value(
+		"Stock Entry",
+		{"remarks": key, "docstatus": 1},
+		"name",
+	)
+
+
+def _receipt_stock(
+	item_code: str,
+	warehouse: str,
+	qty: float,
+	rate: float,
+	idempotency_key: str = "",
+) -> str | None:
+	stockable = _resolve_stockable_item(item_code)
+	return _receipt_stock_batch(
+		[{"item_code": stockable, "qty": qty, "rate": rate, "idempotency_key": idempotency_key}],
 		warehouse,
 	)
 
 
+def _resolve_stockable_item(item_code: str, attrs: dict | None = None) -> str:
+	"""
+	ERPNext cannot receive stock onto a template (has_variants=1).
+	Prior failed imports left colour SKUs like CRJ-BLACK as templates with a child
+	CRJ-BLACK-BLACK — resolve to a real stockable variant before Material Receipt.
+	"""
+	item_code = cstr(item_code or "").strip()
+	if not item_code or not frappe.db.exists("Item", item_code):
+		return item_code
+	if not cint(frappe.db.get_value("Item", item_code, "has_variants")):
+		return item_code
+
+	attrs = attrs or {}
+	# Prefer attribute match under this template
+	attr_names = [
+		row.attribute
+		for row in (frappe.get_doc("Item", item_code).attributes or [])
+		if row.attribute
+	]
+	if attrs and attr_names:
+		matched = _variant_code_for_combo(item_code, attrs, attr_names)
+		if matched and not cint(frappe.db.get_value("Item", matched, "has_variants")):
+			return matched
+
+	# Guess TEMPLATE-COLOR from attrs (CRJ-BLACK + Colour KHAKI is wrong tree;
+	# CRJ-BLACK + Colour BLACK → CRJ-BLACK-BLACK)
+	color_val = ""
+	for k, v in attrs.items():
+		if cstr(k).lower() in ("color", "colour") and cstr(v).strip():
+			color_val = cstr(v).strip()
+			break
+	if color_val:
+		guess = _normalize_item_code(f"{item_code}-{color_val}")
+		if frappe.db.exists("Item", guess) and not cint(
+			frappe.db.get_value("Item", guess, "has_variants")
+		):
+			return guess
+
+	# Single stockable child (common after accidental template-per-colour imports)
+	children = frappe.get_all(
+		"Item",
+		filters={"variant_of": item_code, "disabled": 0, "has_variants": 0},
+		pluck="name",
+	)
+	if len(children) == 1:
+		return children[0]
+	if color_val and children:
+		target = _norm_text(color_val)
+		for child in children:
+			from kqs_retail.utils.items import get_variant_attributes
+
+			vattrs = get_variant_attributes(child) or {}
+			for vk, vv in vattrs.items():
+				if cstr(vk).lower() in ("color", "colour") and _norm_text(vv) == target:
+					return child
+			if target in _norm_text(child):
+				return child
+
+	frappe.throw(
+		_(
+			"Item {0} is a template with variants — stock must go to a color/size SKU. "
+			"Link the correct variant or set Color/Size on the draft row."
+		).format(item_code)
+	)
+
+
 def _receipt_stock_batch(lines: list[dict], warehouse: str) -> str | None:
-	"""Create and submit one Material Receipt for one or more items. Returns SE name."""
+	"""Create and submit Material Receipt(s). Returns last SE name.
+
+	Lines may include ``idempotency_key`` (KQSBI|…). When set, an existing submitted
+	receipt with that remarks is reused and qty is not added again. Keys force
+	one Stock Entry per line so each SKU can be skipped independently.
+	"""
 	if not warehouse:
-		return None
-	items = []
+		frappe.throw(_("Warehouse is required to receive opening stock."))
+
+	keyed = []
+	plain = []
 	for line in lines:
 		qty = flt(line.get("qty"))
+		code = _resolve_stockable_item(cstr(line.get("item_code") or ""), line.get("attributes") or None)
 		if qty <= 0:
-			continue
+			frappe.throw(
+				_("Receive quantity must be greater than zero for item {0}.").format(code or "")
+			)
 		rate = flt(line.get("rate") or 0)
-		items.append(
-			{
-				"item_code": line["item_code"],
-				"qty": qty,
-				"t_warehouse": warehouse,
-				"basic_rate": rate or 1,
-			}
-		)
-	if not items:
-		return None
+		entry = {
+			"item_code": code,
+			"qty": qty,
+			"t_warehouse": warehouse,
+			"basic_rate": rate or 1,
+			"idempotency_key": cstr(line.get("idempotency_key") or "").strip(),
+		}
+		if entry["idempotency_key"]:
+			keyed.append(entry)
+		else:
+			plain.append(entry)
+
+	if not keyed and not plain:
+		frappe.throw(_("No stock lines to receive."))
+
 	company = frappe.db.get_value("Warehouse", warehouse, "company")
-	se = frappe.get_doc(
-		{
+	last_se = None
+
+	def _submit_se(se_items: list[dict], remarks: str = "") -> str:
+		payload = {
 			"doctype": "Stock Entry",
 			"stock_entry_type": "Material Receipt",
 			"company": company,
 			"posting_date": today(),
-			"items": items,
+			"items": [
+				{
+					"item_code": it["item_code"],
+					"qty": it["qty"],
+					"t_warehouse": it["t_warehouse"],
+					"basic_rate": it["basic_rate"],
+				}
+				for it in se_items
+			],
 		}
-	)
-	se.insert(ignore_permissions=True)
-	se.submit()
-	return se.name
+		if remarks:
+			payload["remarks"] = remarks
+		se = frappe.get_doc(payload)
+		se.insert(ignore_permissions=True)
+		se.submit()
+		return se.name
+
+	for entry in keyed:
+		key = entry["idempotency_key"]
+		existing = find_receipt_by_idempotency_key(key)
+		if existing:
+			last_se = existing
+			continue
+		last_se = _submit_se([entry], remarks=key)
+
+	if plain:
+		last_se = _submit_se(plain)
+
+	return last_se
 
 
 @frappe.whitelist()
@@ -996,25 +1520,68 @@ def add_variants_to_product(
 		_apply_attribute_swatch_images(attr_images)
 
 	company = get_default_company()
-	warehouse = (receive_warehouse or "").strip() or _default_central_warehouse(company)
-	if warehouse and not is_kqs_store_warehouse(warehouse, company):
+	warehouse = (receive_warehouse or "").strip()
+	if not warehouse:
+		frappe.throw(_("Select which warehouse / branch receives the new variant stock."))
+	if not is_kqs_store_warehouse(warehouse, company):
 		frappe.throw(_("Select a valid KQS warehouse."))
+
+	for idx, row in enumerate(matrix, start=1):
+		if flt(row.get("qty")) < 1:
+			frappe.throw(
+				_("Opening quantity must be at least 1 on every new variant (row {0}).").format(idx)
+			)
 
 	created = []
 	receipt_lines = []
 	for row in matrix:
 		attrs = _row_attributes(row, attr_names)
 		combo_key = _combo_key(attrs, attr_names)
-		if combo_key in existing:
-			label = ", ".join(f"{k}: {attrs[k]}" for k in attr_names if attrs.get(k))
-			frappe.throw(_("Variant already exists for {0}.").format(label))
-
-		variant = create_variant(doc.name, attrs)
 		variant_code = (row.get("sku") or "").strip() or _default_variant_code(
 			template, attrs, attr_names
 		)
 		variant_code = _normalize_item_code(variant_code)
-		_ensure_new_item_code(variant_code)
+
+		def _keyed_line(code: str, qty: float, rate: float, attributes: dict | None = None) -> dict:
+			line = {
+				"item_code": code,
+				"qty": qty,
+				"rate": rate,
+				"attributes": attributes or {},
+			}
+			key = cstr(row.get("idempotency_key") or "").strip()
+			if not key:
+				batch = cstr(row.get("import_batch") or "").strip()
+				row_id = cstr(row.get("row_id") or "").strip()
+				if batch and row_id:
+					key = make_bulk_import_receipt_key(batch, row_id, code)
+			if key:
+				line["idempotency_key"] = key
+			return line
+
+		# Already have this combo or SKU → receive qty instead of failing
+		existing_code = None
+		if combo_key in existing:
+			existing_code = _variant_code_for_combo(template, attrs, attr_names)
+		if not existing_code and frappe.db.exists("Item", variant_code):
+			existing_code = variant_code
+		if existing_code:
+			qty = flt(row.get("qty"))
+			if qty > 0:
+				receipt_lines.append(
+					_keyed_line(existing_code, qty, flt(row.get("rate") or 0), attrs)
+				)
+			continue
+
+		variant = create_variant(doc.name, attrs)
+		if frappe.db.exists("Item", variant_code):
+			# Race / parallel: receive into existing instead of throw
+			qty = flt(row.get("qty"))
+			if qty > 0:
+				receipt_lines.append(
+					_keyed_line(variant_code, qty, flt(row.get("rate") or 0), attrs)
+				)
+			continue
 		variant.item_code = variant_code
 		variant.item_name = _variant_item_name(doc.item_name or template, attrs)
 		variant.standard_rate = flt(row.get("rate") or doc.standard_rate)
@@ -1025,24 +1592,61 @@ def add_variants_to_product(
 		)
 		if variant_image:
 			variant.image = variant_image
-		variant.insert(ignore_permissions=True)
+		try:
+			variant.insert(ignore_permissions=True)
+		except frappe.DuplicateEntryError:
+			qty = flt(row.get("qty"))
+			if qty > 0 and frappe.db.exists("Item", variant_code):
+				receipt_lines.append(
+					_keyed_line(variant_code, qty, flt(row.get("rate") or 0))
+				)
+			continue
+		except Exception as exc:
+			# ERPNext sometimes raises ValidationError("Item code X already exists.")
+			msg = cstr(exc)
+			if "already exists" in msg.lower() and frappe.db.exists("Item", variant_code):
+				qty = flt(row.get("qty"))
+				if qty > 0:
+					receipt_lines.append(
+						_keyed_line(variant_code, qty, flt(row.get("rate") or 0))
+					)
+				continue
+			raise
 		created.append(variant.name)
 		existing.add(combo_key)
 		qty = flt(row.get("qty"))
-		if qty > 0 and warehouse:
-			receipt_lines.append(
-				{
-					"item_code": variant.name,
-					"qty": qty,
-					"rate": flt(row.get("rate") or variant.standard_rate or 0),
-				}
-			)
+		receipt_lines.append(
+			_keyed_line(variant.name, qty, flt(row.get("rate") or variant.standard_rate or 0))
+		)
 
-	stock_entry = None
-	if receipt_lines and warehouse:
-		stock_entry = _receipt_stock_batch(receipt_lines, warehouse)
+	stock_entry = _receipt_stock_batch(receipt_lines, warehouse) if receipt_lines else None
+	line_results = []
+	for line in receipt_lines:
+		code = cstr(line.get("item_code") or "")
+		key = cstr(line.get("idempotency_key") or "")
+		se_name = find_receipt_by_idempotency_key(key) if key else stock_entry
+		row_id = ""
+		if key.startswith("KQSBI|"):
+			parts = key.split("|", 3)
+			if len(parts) >= 4:
+				row_id = parts[2]
+		line_results.append(
+			{
+				"row_id": row_id,
+				"item_code": code,
+				"stock_entry": se_name or stock_entry,
+				"skipped": cint(bool(key and find_receipt_by_idempotency_key(key))),
+				"warehouse": warehouse,
+			}
+		)
 
-	return {"template": template, "variants": created, "stock_entry": stock_entry}
+	return {
+		"template": template,
+		"variants": created,
+		"stock_entry": stock_entry,
+		"warehouse": warehouse,
+		"line_results": line_results,
+	}
 
 
 def _item_groups_for_item(item) -> list[str]:
@@ -1109,13 +1713,28 @@ def _qty_by_kqs_warehouse(item_code: str) -> dict[str, float]:
 
 
 def _combo_key(attrs: dict, attr_names: list[str]) -> tuple:
-	return tuple((name, (attrs.get(name) or "").strip()) for name in attr_names)
+	return tuple((name, _norm_text(attrs.get(name) or "")) for name in attr_names)
 
 
 def _existing_variant_combo_keys(template: str, attr_names: list[str]) -> set[tuple]:
 	codes = frappe.get_all("Item", filters={"variant_of": template}, pluck="name")
 	keys: set[tuple] = set()
 	for code in codes:
-		attrs = get_variant_attributes(code)
+		attrs = get_variant_attributes(code) or {}
 		keys.add(_combo_key(attrs, attr_names))
 	return keys
+
+
+def _variant_code_for_combo(template: str, attrs: dict, attr_names: list[str]) -> str | None:
+	"""Return existing variant item code matching these attributes, or None."""
+	target = _combo_key(attrs, attr_names)
+	codes = frappe.get_all("Item", filters={"variant_of": template, "disabled": 0}, pluck="name")
+	for code in codes:
+		vattrs = get_variant_attributes(code) or {}
+		if _combo_key(vattrs, attr_names) == target:
+			return code
+	# Fallback: generated SKU already exists
+	guess = _normalize_item_code(_default_variant_code(template, attrs, attr_names))
+	if guess and frappe.db.exists("Item", guess):
+		return guess
+	return None

@@ -135,6 +135,28 @@ Manager-only Desk pages (cashiers must not open these):
 
 Managers opening **ERPNext Settings** need read on settings singles (e.g. Global Defaults). KQS adds these on migrate via `manager_permissions.ensure`. HQ admins use **System Manager** for full Setup access.
 
+### E. Business owner (Matsebiso)
+
+Owners need full Desk control (stock take / Stock Reconciliation, invoices, settings) without living as a cashier.
+
+| Rule | Why |
+|------|-----|
+| Do **not** leave `KQS Cashier` on the owner user | Migrate used to strip `Stock Manager` from anyone with Cashier — that blocked Stock Reconciliation |
+| Grant `KQS Store Manager` + `Stock Manager` + `Sales Manager` + `Accounts Manager` | ERPNext business modules + KQS pages |
+| `System Manager` OK for owner | Opens Setup / Users; avoid `Script Manager` (server scripts) |
+| Stock Reconciliation | Granted to `KQS Store Manager` and `System Manager` via `stock_permissions.ensure` |
+
+On migrate, `kqs_retail.setup.owner_users.ensure` applies this for `matsebiso@kqsfootwear.com`. Re-run anytime:
+
+```bash
+bench --site YOUR_SITE execute kqs_retail.setup.owner_users.ensure
+bench --site YOUR_SITE execute kqs_retail.setup.stock_permissions.ensure
+bench --site YOUR_SITE execute kqs_retail.setup.manager_permissions.ensure
+bench --site YOUR_SITE clear-cache
+```
+
+Then the owner must **log out and log back in**.
+
 ---
 
 ## ERPNext Settings — “Page global-defaults not found”

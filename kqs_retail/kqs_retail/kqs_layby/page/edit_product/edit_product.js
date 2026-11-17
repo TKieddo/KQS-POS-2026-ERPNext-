@@ -71,7 +71,7 @@ frappe.pages["edit-product"].on_page_load = function (wrapper) {
 				options: "Warehouse",
 				label: __("Receive new variant stock into"),
 				description: __(
-					"Only used when you add new variants with opening qty. Existing stock is unchanged."
+					"Required when adding new variants — opening qty is received here. Existing stock is unchanged."
 				),
 				get_query() {
 					return { query: "kqs_retail.api.stock_transfer.kqs_warehouse_query" };
@@ -814,9 +814,9 @@ frappe.pages["edit-product"].on_page_load = function (wrapper) {
 					<td><input type="text" class="form-control input-sm kqs-new-barcode" value="${frappe.utils.escape_html(
 						row.barcode || ""
 					)}" /></td>
-					<td><input type="number" min="0" step="1" class="form-control input-sm kqs-new-qty" style="width:90px;" value="${
-						row.qty || 0
-					}" /></td>
+					<td><input type="number" min="1" step="1" class="form-control input-sm kqs-new-qty" style="width:90px;" value="${
+						row.qty || ""
+					}" placeholder="${__("min 1")}" required /></td>
 					<td><button type="button" class="btn btn-xs btn-default kqs-new-remove">${__("Remove")}</button></td>
 				</tr>`;
 			})
@@ -828,7 +828,9 @@ frappe.pages["edit-product"].on_page_load = function (wrapper) {
 			</tr></thead>
 			<tbody>${rows}</tbody>
 		</table>
-		<p class="text-muted small">${__("Opening qty receives into the warehouse selected above (new variants only).")}</p>`);
+		<p class="text-muted small">${__(
+			"Opening qty (minimum 1) is required and receives into the warehouse selected above (new variants only)."
+		)}</p>`);
 		$grid.find(".kqs-new-remove").on("click", function () {
 			capture_new_from_dom();
 			const idx = parseInt($(this).closest("tr").attr("data-idx"), 10);
@@ -1013,9 +1015,21 @@ frappe.pages["edit-product"].on_page_load = function (wrapper) {
 			frappe.msgprint(__("Select at least one category."));
 			return;
 		}
-		if (new_variant_rows.some((r) => (r.qty || 0) > 0) && !form.get_value("warehouse")) {
-			frappe.msgprint(__("Select a warehouse when entering opening quantities on new variants."));
-			return;
+		if (new_variant_rows.length) {
+			if (!form.get_value("warehouse")) {
+				frappe.msgprint(__("Select a warehouse — opening stock for new variants is received there."));
+				return;
+			}
+			const missing_qty = new_variant_rows.filter((r) => (parseFloat(r.qty) || 0) < 1);
+			if (missing_qty.length) {
+				frappe.msgprint(
+					__(
+						"Enter opening quantity of at least 1 on every new variant ({0} row(s) missing).",
+						[missing_qty.length]
+					)
+				);
+				return;
+			}
 		}
 
 		save_in_progress = true;

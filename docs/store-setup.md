@@ -183,9 +183,12 @@ Supplier **Purchase Receipt** remains available in ERPNext for formal PO receivi
 2. **Bulk Stock Import** (`/app/bulk-stock-import`) — CSV or paper photo → preview → create / add variants / receive (see [bulk-stock-import.md](bulk-stock-import.md))
 3. **Edit Product** (`/app/edit-product`) — update name/categories/prices; add new size/colour variants without deleting
 4. **Receive Stock** (`/app/receive-stock`) — inbound qty for existing SKUs (default warehouse **Central**)
-5. **Assign to Branch** (`/app/assign-to-branch`) — transfer sellable stock between warehouses (Central ↔ store, or store ↔ store)
-6. **Remove from branch** — Edit Product menu → pick branch → tick variants → **Discard** (default, zeros sellable at that store only) or optionally transfer to Central. Confirm required. Other branches unchanged.
-7. **Delete from catalog** — Item list / form → zeros **all** warehouses, then hard-delete or archive as `DEL-…` so the SKU can be recreated **empty**
+5. **Assign to Branch** (`/app/assign-to-branch`) — transfer sellable stock between warehouses (Central ↔ store, or store ↔ store). You are **prompted to choose From and To** (nothing defaults to Central). **Only products with qty at the From warehouse are listed**. Tick products (or **Select all matching**), then **Use all available** to fill transfer qty.
+
+**Add Product / Bulk Import / Receive Stock** also prompt for **which branch receives stock** — opening qty and publishes land on that branch directly (no silent Central).
+6. **Item list → Branch switcher** — tap **All catalog** or a store warehouse to list only products with on-hand qty at that branch (templates included when any variant has stock)
+7. **Remove from branch** — Edit Product menu → pick branch → tick variants → **Discard** (default, zeros sellable at that store only) or optionally transfer to Central. Confirm required. Other branches unchanged.
+8. **Delete from catalog** — Item list / form → zeros **all** warehouses, then hard-delete or archive as `DEL-…` so the SKU can be recreated **empty**
 
 ### Catalog delete vs re-add
 
@@ -209,15 +212,16 @@ Add Product shows **pill buttons** loaded from ERPNext **Item Group**. Pick a **
 | **Kids** | `Kids` | Clothing, Shoes, Accessories |
 | **Home & Living** | `Home & Living` | Bedding & Sleep, Household & Plastic Products, Home Extras |
 | **General Care & Extras** | `General Care & Extras` | Shoe Care, General Store Items |
-| **Unisex** | `Unisex` | Single category — no subgroups (products that are not Men/Women/Kids specific) |
+| **Unisex** | `Unisex` | Clothing, Shoes, Accessories (same shape as Men/Women — e.g. `Unisex — Backpacks & Bags`, `Unisex — Sneakers & Takkies`) |
 
 **To add or edit categories:** Desk → **Stock → Item Group** (tree view).
 
 - Top-level departments (`Women`, `Men`, `Kids`, etc.) are **Group** nodes under `All Item Groups`.
 - Subgroups (`Clothing`, `Shoes`, …) are **Group** nodes under their department.
 - Selectable categories (e.g. `Heels & Pumps`, `Mattresses (Single, Double, Queen, King)`) are **leaf** nodes (`is_group` unchecked).
-- Men / Women / Kids use department-prefixed names in ERPNext (e.g. `Women — Clothing`, `Men — Sneakers & Takkies`) because Item Group names must be globally unique. Add Product shows the short label (`Clothing`, `Sneakers & Takkies`) on the pills.
+- Men / Women / Kids / Unisex use department-prefixed names in ERPNext (e.g. `Women — Clothing`, `Men — Sneakers & Takkies`, `Unisex — Hats & Caps`) because Item Group names must be globally unique. Add Product shows the short label (`Clothing`, `Sneakers & Takkies`, `Hats & Caps`) on the pills.
 - New pills appear on Add Product after refresh (no code change).
+- Do **not** assign products to the department folder alone (`Unisex`, `Men`, …) — always pick a leaf (`Unisex — Backpacks & Bags`, etc.) so website filters and SEO can say what it is, not only the gender.
 
 **Seed the full KQS category tree:**
 
@@ -226,6 +230,13 @@ docker compose -f docker/compose.dev.yml exec backend \
   bench --site frontend execute kqs_retail.setup.item_group_catalog.seed
 ```
 
+**Production / existing catalog (safe — creates missing Unisex subgroups only):**
+
+```bash
+bench --site YOUR_SITE execute kqs_retail.setup.item_group_catalog.ensure_kqs_item_groups
+```
+
+If the site still has a flat leaf `Unisex`, ensure promotes it to a department and moves those items to `Unisex — Backpacks & Bags` (re-categorize bags vs caps vs sneakers afterward on Edit Product).
 Or as part of full demo setup:
 
 ```bash
